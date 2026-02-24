@@ -1,10 +1,10 @@
 """
-Dashboard Dengue Brasil — Entrypoint.
+Dashboard Arboviroses Brasil — Entrypoint.
 
 Aplicação web interativa para análise e monitoramento de dados de
-dengue no Brasil, desenvolvida como Trabalho de Conclusão de Curso
-da Especialização em Ciência de Dados do IFTM — Campus Uberaba
-Parque Tecnológico.
+arboviroses (dengue, chikungunya, zika) no Brasil, desenvolvida como
+Trabalho de Conclusão de Curso da Especialização em Ciência de Dados
+do IFTM — Campus Uberaba Parque Tecnológico.
 
 Autor: Guilherme José Morais Mutão
 Orientador: Prof. Dr. Ernani Viriato De Melo
@@ -17,7 +17,7 @@ import streamlit as st
 # Configuração da página (deve ser a PRIMEIRA chamada Streamlit)
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Dashboard Dengue Brasil",
+    page_title="Dashboard Arboviroses Brasil",
     page_icon="🦟",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -47,6 +47,11 @@ comparativo = st.Page(
     title="Comparativo Regional",
     icon=":material/bar_chart:",
 )
+clima = st.Page(
+    "pages/06_clima.py",
+    title="Análise Climática",
+    icon=":material/thermostat:",
+)
 sobre = st.Page(
     "pages/05_sobre.py",
     title="Sobre o Projeto",
@@ -59,7 +64,7 @@ sobre = st.Page(
 pg = st.navigation(
     {
         "Dashboard": [visao_geral, mapa],
-        "Análises": [serie_temporal, comparativo],
+        "Análises": [serie_temporal, comparativo, clima],
         "Informações": [sobre],
     }
 )
@@ -67,11 +72,26 @@ pg = st.navigation(
 # ---------------------------------------------------------------------------
 # Sidebar global
 # ---------------------------------------------------------------------------
+DOENCAS = {"dengue": "🦟 Dengue", "chikungunya": "🤒 Chikungunya", "zika": "🧬 Zika"}
+
 with st.sidebar:
-    st.markdown("### 🦟 Dashboard Dengue Brasil")
+    doenca_sel = st.selectbox(
+        "Doença",
+        options=list(DOENCAS.keys()),
+        format_func=lambda d: DOENCAS[d],
+        index=0,
+        key="doenca_global",
+        help="Selecione a arbovirose para análise. Todas as páginas usarão esta seleção.",
+    )
+    st.session_state["doenca"] = doenca_sel
+
+    titulo_doenca = DOENCAS.get(doenca_sel, "Dengue").split(" ", 1)
+    icone = titulo_doenca[0]
+    nome = titulo_doenca[1] if len(titulo_doenca) > 1 else "Dengue"
+    st.markdown(f"### {icone} Dashboard {nome} Brasil")
     st.caption(
-        "Análise e monitoramento de dados de saúde pública · "
-        "Dengue no Brasil"
+        f"Análise e monitoramento de dados de saúde pública · "
+        f"{nome} no Brasil"
     )
     st.divider()
 

@@ -21,7 +21,9 @@ from src.data_processing import (
 from src.charts import (
     serie_temporal,
     serie_temporal_com_estimativa,
+    serie_curva_epidemica,
     heatmap_temporal,
+    heatmap_estados,
 )
 from src.constants import ANO_MINIMO, ANO_MAXIMO, ESTADOS, LISTA_UFS, METRICAS
 
@@ -70,6 +72,14 @@ with st.sidebar:
         key="serie_metrica",
     )
 
+    # Média móvel
+    media_movel = st.toggle(
+        "Média móvel (4 semanas)",
+        value=False,
+        help="Exibe linha suavizada com média móvel de 4 semanas.",
+        key="serie_media_movel",
+    )
+
 # ---------------------------------------------------------------------------
 # Título
 # ---------------------------------------------------------------------------
@@ -80,12 +90,14 @@ st.markdown(
 )
 st.divider()
 
+_doenca = st.session_state.get("doenca", "dengue")
+
 # ---------------------------------------------------------------------------
 # Modo: Brasil agregado
 # ---------------------------------------------------------------------------
 if modo == "Brasil (agregado)":
     with st.spinner("Buscando dados nacionais…"):
-        df_bruto = buscar_dados_brasil_capitais(ey_start=ano_inicio, ey_end=ano_fim)
+        df_bruto = buscar_dados_brasil_capitais(ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
 
     if df_bruto.empty:
         st.error("⚠️ Não foi possível obter dados. Tente novamente.")
@@ -95,19 +107,74 @@ if modo == "Brasil (agregado)":
     df = filtrar_por_periodo(df, ano_inicio, ano_fim)
     df_nacional = agregar_nacional_por_semana(df)
 
-    # Tabs: Série simples | Notificados vs Estimados | Heatmap
-    tab1, tab2, tab3 = st.tabs([
+    # Calcular variação semanal
+    df_nacional = calcular_variacao_semanal(df_nacional, coluna=metrica)
+
+    # Média móvel
+    if media_movel and metrica in df_nacional.columns:
+        df_nacional[f"{metrica}_mm4"] = (
+            df_nacional[metrica].rolling(4, min_periods=1).mean()
+        )
+
+    # KPIs de variação
+    if f"{metrica}_var_pct" in df_nacional.columns:
+        ultimas = df_nacional.dropna(subset=[f"{metrica}_var_pct"]).tail(4)
+        if not ultimas.empty:
+            kpi1, kpi2, kpi3 = st.columns(3)
+            with kpi1:
+                ult_var = ultimas[f"{metrica}_var_pct"].iloc[-1]
+                st.metric(
+                    "Variação Última Semana",
+                    f"{ult_var:+.1f}%",
+                    delta=f"{'↑' if ult_var > 0 else '↓'} {'aumento' if ult_var > 0 else 'redução'}",
+                    delta_color="inverse",
+                )
+            with kpi2:
+                media_var = ultimas[f"{metrica}_var_pct"].mean()
+                st.metric(
+                    "Variação Média (4 sem.)",
+                    f"{media_var:+.1f}%",
+                    help="Média da variação percentual das últimas 4 semanas.",
+                )
+            with kpi3:
+                total = int(df_nacional[metrica].sum()) if metrica in df_nacional.columns else 0
+                st.metric(
+                    f"Total {METRICAS.get(metrica, metrica)}",
+                    f"{total:,}",
+                )
+            st.divider()
+
+    # Tabs: Série simples | Notificados vs Estimados | Curva Epidêmica | Heatmap
+    tab1, tab2, tab3, tab4 = st.tabs([
         "📊 Série Temporal",
         "🔍 Notificados vs. Estimados",
+        "🔄 Curva Epidêmica Anual",
         "🌡️ Mapa de Calor Sazonal",
     ])
 
     with tab1:
+        import plotly.graph_objects as go
+
         fig = serie_temporal(
             df_nacional,
             coluna_y=metrica,
             titulo=f"{METRICAS.get(metrica, metrica)} — Brasil ({ano_inicio}–{ano_fim})",
         )
+
+        # Adicionar média móvel se ativada
+        if media_movel and f"{metrica}_mm4" in df_nacional.columns:
+            coluna_x = "data" if "data" in df_nacional.columns else "se"
+            df_sorted = df_nacional.sort_values(coluna_x)
+            fig.add_trace(
+                go.Scatter(
+                    x=df_sorted[coluna_x],
+                    y=df_sorted[f"{metrica}_mm4"],
+                    mode="lines",
+                    name="Média Móvel (4 sem.)",
+                    line=dict(color="#F39C12", width=3, dash="dash"),
+                )
+            )
+
         st.plotly_chart(fig, use_container_width=True)
 
     with tab2:
@@ -118,6 +185,19 @@ if modo == "Brasil (agregado)":
         st.plotly_chart(fig_est, use_container_width=True)
 
     with tab3:
+        st.markdown(
+            "**Sobreposição anual**: cada linha representa um ano, alinhada pela "
+            "semana epidemiológica (1–52). Permite comparar a intensidade da "
+            "epidemia entre anos."
+        )
+        fig_curva = serie_curva_epidemica(
+            df_nacional,
+            coluna_valor=metrica,
+            titulo=f"Curva Epidêmica — {METRICAS.get(metrica, metrica)} ({ano_inicio}–{ano_fim})",
+        )
+        st.plotly_chart(fig_curva, use_container_width=True)
+
+    with tab4:
         df_heat = extrair_ano_semana(df_nacional)
         fig_heat = heatmap_temporal(
             df_heat,
@@ -126,9 +206,17 @@ if modo == "Brasil (agregado)":
         )
         st.plotly_chart(fig_heat, use_container_width=True)
 
-    # Dados brutos
+    # Dados brutos com download
     with st.expander("📋 Ver dados brutos"):
         st.dataframe(df_nacional, hide_index=True, use_container_width=True)
+        csv = df_nacional.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "⬇️ Baixar série temporal (CSV)",
+            data=csv,
+            file_name=f"dengue_serie_brasil_{ano_inicio}_{ano_fim}.csv",
+            mime="text/csv",
+            key="dl_serie_br",
+        )
 
 # ---------------------------------------------------------------------------
 # Modo: Comparar estados
@@ -141,7 +229,7 @@ else:
     with st.spinner(f"Buscando dados de {len(ufs_selecionadas)} estados…"):
         frames = []
         for uf in ufs_selecionadas:
-            df_uf = buscar_dados_estado_capitais(uf, ey_start=ano_inicio, ey_end=ano_fim)
+            df_uf = buscar_dados_estado_capitais(uf, ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
             if not df_uf.empty:
                 frames.append(df_uf)
 
@@ -158,7 +246,11 @@ else:
     df_uf_semana = agregar_por_uf_semana(df_todos)
 
     # Tabs
-    tab1, tab2 = st.tabs(["📊 Comparativo", "🌡️ Mapa de Calor"])
+    tab1, tab2, tab3 = st.tabs([
+        "📊 Comparativo",
+        "🔄 Curva Epidêmica",
+        "🌡️ Mapa de Calor",
+    ])
 
     with tab1:
         fig = serie_temporal(
@@ -170,9 +262,21 @@ else:
         st.plotly_chart(fig, use_container_width=True)
 
     with tab2:
-        # Heatmap por estado
-        from src.charts import heatmap_estados
+        uf_curva = st.selectbox(
+            "Estado para curva epidêmica",
+            options=ufs_selecionadas,
+            format_func=lambda s: f"{s} — {ESTADOS[s]['nome']}",
+            key="serie_curva_uf",
+        )
+        df_curva_uf = df_uf_semana[df_uf_semana["sigla_uf"] == uf_curva]
+        fig_curva = serie_curva_epidemica(
+            df_curva_uf,
+            coluna_valor=metrica,
+            titulo=f"Curva Epidêmica — {ESTADOS[uf_curva]['nome']} ({ano_inicio}–{ano_fim})",
+        )
+        st.plotly_chart(fig_curva, use_container_width=True)
 
+    with tab3:
         fig_hm = heatmap_estados(
             df_uf_semana,
             coluna_valor="casos" if metrica not in df_uf_semana.columns else metrica,
@@ -182,3 +286,11 @@ else:
 
     with st.expander("📋 Ver dados brutos"):
         st.dataframe(df_uf_semana, hide_index=True, use_container_width=True)
+        csv = df_uf_semana.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "⬇️ Baixar comparativo (CSV)",
+            data=csv,
+            file_name=f"dengue_comparativo_{ano_inicio}_{ano_fim}.csv",
+            mime="text/csv",
+            key="dl_serie_comp",
+        )

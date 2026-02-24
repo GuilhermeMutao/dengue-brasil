@@ -5,6 +5,8 @@ Mapeamentos de UFs, regiões, geocodes de capitais, paleta de cores
 e configurações padrão da aplicação.
 """
 
+from datetime import datetime as _dt
+
 # ---------------------------------------------------------------------------
 # Configurações da aplicação
 # ---------------------------------------------------------------------------
@@ -13,7 +15,7 @@ APP_ICON = "🦟"
 APP_LAYOUT = "wide"
 
 ANO_MINIMO = 2010
-ANO_MAXIMO = 2025
+ANO_MAXIMO = _dt.now().year
 DOENCA_PADRAO = "dengue"
 
 # ---------------------------------------------------------------------------
@@ -121,9 +123,51 @@ IBGE_MALHAS_URL = "https://servicodados.ibge.gov.br/api/v3/malhas"
 METRICAS: dict[str, str] = {
     "casos": "Casos Notificados",
     "casos_est": "Casos Estimados",
-    "inc": "Taxa de Incidência",
+    "inc": "Incidência (por 100 mil hab.)",
+    "casos_por_100k": "Casos por 100 mil hab.",
+    "pct_nacional": "% do Total Nacional",
     "rt": "Número Reprodutivo (Rt)",
     "nivel": "Nível de Alerta",
+    "taxa_est_notif": "Razão Estimado / Notificado",
+    "populacao": "População Estimada",
+}
+
+# Métricas disponíveis para mapas e filtros
+METRICAS_MAPA: list[str] = [
+    "casos", "casos_est", "inc", "casos_por_100k", "pct_nacional", "taxa_est_notif",
+]
+
+# ---------------------------------------------------------------------------
+# População estimada dos estados (IBGE 2024)
+# ---------------------------------------------------------------------------
+POPULACAO_ESTADOS: dict[str, int] = {
+    "AC": 936_000,
+    "AL": 3_360_000,
+    "AM": 4_287_000,
+    "AP": 901_000,
+    "BA": 14_986_000,
+    "CE": 9_240_000,
+    "DF": 3_095_000,
+    "ES": 4_109_000,
+    "GO": 7_206_000,
+    "MA": 7_154_000,
+    "MG": 21_412_000,
+    "MS": 2_866_000,
+    "MT": 3_784_000,
+    "PA": 8_777_000,
+    "PB": 4_059_000,
+    "PE": 9_674_000,
+    "PI": 3_289_000,
+    "PR": 11_597_000,
+    "RJ": 17_503_000,
+    "RN": 3_560_000,
+    "RO": 1_815_000,
+    "RR": 715_000,
+    "RS": 11_473_000,
+    "SC": 7_610_000,
+    "SE": 2_348_000,
+    "SP": 46_650_000,
+    "TO": 1_607_000,
 }
 
 # ---------------------------------------------------------------------------
@@ -131,3 +175,9 @@ METRICAS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 LISTA_UFS: list[str] = sorted(ESTADOS.keys())
 LISTA_UFS_NOMES: list[str] = [f"{s} — {ESTADOS[s]['nome']}" for s in LISTA_UFS]
+
+# Total da população brasileira estimada
+POPULACAO_BRASIL: int = sum(POPULACAO_ESTADOS.values())
+
+# Lista de regiões para filtro
+LISTA_REGIOES: list[str] = sorted(REGIOES.keys())

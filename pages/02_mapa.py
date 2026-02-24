@@ -20,7 +20,9 @@ from src.api_ibge import (
 from src.data_processing import (
     limpar_dados,
     filtrar_por_periodo,
+    filtrar_por_regiao,
     adicionar_info_uf,
+    adicionar_metricas_populacionais,
     preparar_dados_mapa_estados,
     preparar_dados_mapa_municipios,
 )
@@ -30,7 +32,10 @@ from src.constants import (
     ANO_MAXIMO,
     ESTADOS,
     LISTA_UFS,
+    LISTA_REGIOES,
     METRICAS,
+    METRICAS_MAPA,
+    LABELS_NIVEL_ALERTA,
 )
 
 # ---------------------------------------------------------------------------
@@ -66,20 +71,42 @@ with st.sidebar:
             key="mapa_uf",
         )
 
+    # Filtro por macrorregião (somente nível Brasil)
+    regioes_sel = []
+    if nivel_geo == "Brasil (Estados)":
+        regioes_sel = st.multiselect(
+            "Filtrar por Macrorregião",
+            options=LISTA_REGIOES,
+            default=[],
+            help="Deixe vazio para todas as regiões.",
+            key="mapa_regioes",
+        )
+
     # Métrica
-    metricas_disponiveis = ["casos", "casos_est", "inc"]
     metrica = st.selectbox(
         "Métrica para colorir o mapa",
-        options=metricas_disponiveis,
+        options=METRICAS_MAPA,
         format_func=lambda m: METRICAS.get(m, m),
         index=0,
         key="mapa_metrica",
     )
 
+    # Escala logarítmica
+    log_scale = st.toggle(
+        "Escala logarítmica",
+        value=False,
+        help="Suaviza a dominância de regiões com valores extremos.",
+        key="mapa_log_scale",
+    )
+
 # ---------------------------------------------------------------------------
 # Título
 # ---------------------------------------------------------------------------
-st.title("🗺️ Mapa Interativo")
+_doenca = st.session_state.get("doenca", "dengue")
+_nomes_doenca = {"dengue": "Dengue", "chikungunya": "Chikungunya", "zika": "Zika"}
+_nome_doenca = _nomes_doenca.get(_doenca, "Dengue")
+
+st.title(f"🗺️ Mapa Interativo — {_nome_doenca}")
 st.markdown(
     "Explore a distribuição geográfica da dengue. "
     "Selecione **Brasil** para visão por estados ou um **estado específico** "
@@ -92,7 +119,7 @@ st.divider()
 # ---------------------------------------------------------------------------
 if nivel_geo == "Brasil (Estados)":
     with st.spinner("Carregando dados nacionais…"):
-        df_bruto = buscar_dados_brasil_capitais(ey_start=ano_inicio, ey_end=ano_fim)
+        df_bruto = buscar_dados_brasil_capitais(ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
 
     if df_bruto.empty:
         st.error("⚠️ Não foi possível obter dados. Tente novamente.")
@@ -101,8 +128,39 @@ if nivel_geo == "Brasil (Estados)":
     df = limpar_dados(df_bruto)
     df = adicionar_info_uf(df)
     df = filtrar_por_periodo(df, ano_inicio, ano_fim)
+
+    # Aplicar filtro de região
+    if regioes_sel:
+        df = filtrar_por_regiao(df, regioes_sel)
+
+    if df.empty:
+        st.warning("Nenhum dado encontrado com os filtros aplicados.")
+        st.stop()
+
     df_resumo = resumo_por_uf(df)
+    df_resumo = adicionar_info_uf(df_resumo)
+    df_resumo = adicionar_metricas_populacionais(df_resumo)
     df_mapa = preparar_dados_mapa_estados(df_resumo)
+
+    # Painel de resumo rápido acima do mapa
+    kpi1, kpi2, kpi3 = st.columns(3)
+    with kpi1:
+        total_casos = int(df_resumo["casos"].sum()) if "casos" in df_resumo.columns else 0
+        st.metric("Total de Casos", f"{total_casos:,.0f}")
+    with kpi2:
+        if "casos_por_100k" in df_resumo.columns and not df_resumo.empty:
+            top = df_resumo.nlargest(1, "casos_por_100k").iloc[0]
+            st.metric("Maior Incidência per Capita", f"{top['sigla_uf']} — {top['casos_por_100k']:.0f}/100k")
+        else:
+            st.metric("Maior Incidência per Capita", "—")
+    with kpi3:
+        if "casos" in df_resumo.columns and not df_resumo.empty:
+            top_abs = df_resumo.nlargest(1, "casos").iloc[0]
+            st.metric("Estado Mais Afetado", f"{top_abs['sigla_uf']} — {int(top_abs['casos']):,} casos")
+        else:
+            st.metric("Estado Mais Afetado", "—")
+
+    st.divider()
 
     try:
         geojson = carregar_geojson_estados()
@@ -114,6 +172,7 @@ if nivel_geo == "Brasil (Estados)":
             feature_id_key=feature_key,
             metrica=metrica,
             titulo=f"{METRICAS.get(metrica, metrica)} por Estado ({ano_inicio}–{ano_fim})",
+            log_scale=log_scale,
         )
         st.plotly_chart(fig, use_container_width=True, key="mapa_estados")
     except Exception as e:
@@ -122,11 +181,35 @@ if nivel_geo == "Brasil (Estados)":
     # Tabela resumo abaixo do mapa
     with st.expander("📋 Ver dados em tabela", expanded=False):
         if not df_resumo.empty:
-            cols = [c for c in ["sigla_uf", "nome_uf", "regiao", "casos", "casos_est", "inc"] if c in df_resumo.columns]
+            cols = [c for c in [
+                "sigla_uf", "nome_uf", "regiao", "populacao",
+                "casos", "casos_est", "casos_por_100k", "pct_nacional",
+                "inc", "taxa_est_notif", "nivel",
+            ] if c in df_resumo.columns]
+
+            sort_col = metrica if metrica in df_resumo.columns else "casos"
             st.dataframe(
-                df_resumo[cols].sort_values("casos", ascending=False),
+                df_resumo[cols].sort_values(sort_col, ascending=False),
+                column_config={
+                    "populacao": st.column_config.NumberColumn("População", format="%d"),
+                    "casos": st.column_config.NumberColumn("Casos Notif.", format="%d"),
+                    "casos_est": st.column_config.NumberColumn("Casos Estim.", format="%d"),
+                    "casos_por_100k": st.column_config.NumberColumn("Casos/100k", format="%.1f"),
+                    "pct_nacional": st.column_config.NumberColumn("% Nacional", format="%.2f%%"),
+                    "taxa_est_notif": st.column_config.NumberColumn("Razão Est/Notif", format="%.2f"),
+                    "inc": st.column_config.NumberColumn("Incidência", format="%.2f"),
+                    "nivel": st.column_config.NumberColumn("Nível", format="%d"),
+                },
                 hide_index=True,
                 use_container_width=True,
+            )
+            csv_estados = df_resumo[cols].sort_values(sort_col, ascending=False).to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "⬇️ Baixar dados por estado (CSV)",
+                data=csv_estados,
+                file_name=f"dengue_estados_{ano_inicio}_{ano_fim}.csv",
+                mime="text/csv",
+                key="dl_mapa_estados",
             )
 
 # ---------------------------------------------------------------------------
@@ -174,6 +257,7 @@ else:
             ey_start=ano_inicio,
             ey_end=ano_fim,
             max_municipios=limite,
+            disease=_doenca,
         )
 
     if df_munic_dados.empty:
@@ -190,11 +274,28 @@ else:
         nomes["geocode"] = nomes["geocode"].astype(df_mapa_munic["geocode"].dtype)
         df_mapa_munic = df_mapa_munic.merge(nomes, on="geocode", how="left")
 
+    # KPIs resumo do estado
+    kpi1, kpi2, kpi3 = st.columns(3)
+    with kpi1:
+        total = int(df_mapa_munic["casos"].sum()) if "casos" in df_mapa_munic.columns else 0
+        st.metric("Total de Casos", f"{total:,}")
+    with kpi2:
+        munic_dados = len(df_mapa_munic)
+        st.metric("Municípios com Dados", f"{munic_dados}/{total_munic}")
+    with kpi3:
+        if "nivel" in df_mapa_munic.columns and not df_mapa_munic.empty:
+            nivel_max = int(df_mapa_munic["nivel"].max())
+            label_nivel = LABELS_NIVEL_ALERTA.get(nivel_max, "—")
+            st.metric("Nível Máximo de Alerta", label_nivel.split("—")[0].strip())
+        else:
+            st.metric("Nível Máximo de Alerta", "—")
+
+    st.divider()
+
     try:
         geojson_munic = carregar_geojson_municipios(info_uf["cod_uf"])
         feature_key_munic = obter_feature_id_key_municipios(geojson_munic)
 
-        # Estimar centro do mapa
         centros_uf = {
             "AC": {"lat": -9.0, "lon": -70.8}, "AL": {"lat": -9.5, "lon": -36.5},
             "AM": {"lat": -3.4, "lon": -65.0}, "AP": {"lat": 1.4, "lon": -51.8},
@@ -213,14 +314,18 @@ else:
         }
         centro = centros_uf.get(uf_selecionada, {"lat": -14.2, "lon": -51.9})
 
+        # Para métricas populacionais no nível de município, usar apenas métricas básicas
+        metrica_munic = metrica if metrica in ("casos", "casos_est", "inc") else "casos"
+
         fig = mapa_coropletico_municipios(
             df=df_mapa_munic,
             geojson=geojson_munic,
             feature_id_key=feature_key_munic,
-            metrica=metrica,
-            titulo=f"{METRICAS.get(metrica, metrica)} — {info_uf['nome']} ({ano_inicio}–{ano_fim})",
+            metrica=metrica_munic,
+            titulo=f"{METRICAS.get(metrica_munic, metrica_munic)} — {info_uf['nome']} ({ano_inicio}–{ano_fim})",
             center=centro,
             zoom=5,
+            log_scale=log_scale,
         )
         st.plotly_chart(fig, use_container_width=True, key="mapa_munic")
     except Exception as e:
@@ -228,13 +333,32 @@ else:
 
     # Tabela dos municípios
     with st.expander("📋 Ver dados dos municípios", expanded=False):
-        cols_munic = [c for c in ["nome", "geocode", "casos", "casos_est", "inc", "nivel"] if c in df_mapa_munic.columns]
+        cols_munic = [c for c in [
+            "nome", "geocode", "casos", "casos_est", "inc", "nivel",
+        ] if c in df_mapa_munic.columns]
         if cols_munic:
+            df_munic_show = df_mapa_munic[cols_munic].sort_values(
+                "casos" if "casos" in cols_munic else cols_munic[0],
+                ascending=False,
+            )
             st.dataframe(
-                df_mapa_munic[cols_munic].sort_values(
-                    "casos" if "casos" in cols_munic else cols_munic[0],
-                    ascending=False,
-                ),
+                df_munic_show,
+                column_config={
+                    "nome": "Município",
+                    "geocode": "Geocode",
+                    "casos": st.column_config.NumberColumn("Casos", format="%d"),
+                    "casos_est": st.column_config.NumberColumn("Casos Est.", format="%d"),
+                    "inc": st.column_config.NumberColumn("Incidência", format="%.2f"),
+                    "nivel": st.column_config.NumberColumn("Nível", format="%d"),
+                },
                 hide_index=True,
                 use_container_width=True,
+            )
+            csv_munic = df_munic_show.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "⬇️ Baixar dados dos municípios (CSV)",
+                data=csv_munic,
+                file_name=f"dengue_{uf_selecionada}_municipios_{ano_inicio}_{ano_fim}.csv",
+                mime="text/csv",
+                key="dl_mapa_munic",
             )

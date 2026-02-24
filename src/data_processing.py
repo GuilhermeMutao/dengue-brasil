@@ -12,7 +12,13 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 
-from src.constants import ESTADOS, SIGLA_PARA_COD_UF, UF_PARA_REGIAO
+from src.constants import (
+    ESTADOS,
+    POPULACAO_BRASIL,
+    POPULACAO_ESTADOS,
+    SIGLA_PARA_COD_UF,
+    UF_PARA_REGIAO,
+)
 
 
 # =====================================================================
@@ -98,6 +104,26 @@ def filtrar_por_geocode(df: pd.DataFrame, geocode: int) -> pd.DataFrame:
     return df[df["geocode"] == geocode].reset_index(drop=True)
 
 
+def filtrar_por_regiao(
+    df: pd.DataFrame,
+    regioes: list[str],
+) -> pd.DataFrame:
+    """Filtra DataFrame pelas macrorregiões selecionadas."""
+    if df.empty or not regioes or "regiao" not in df.columns:
+        return df
+    return df[df["regiao"].isin(regioes)].reset_index(drop=True)
+
+
+def filtrar_por_nivel_alerta(
+    df: pd.DataFrame,
+    niveis: list[int],
+) -> pd.DataFrame:
+    """Filtra DataFrame pelos níveis de alerta selecionados."""
+    if df.empty or not niveis or "nivel" not in df.columns:
+        return df
+    return df[df["nivel"].isin(niveis)].reset_index(drop=True)
+
+
 # =====================================================================
 # Enriquecimento
 # =====================================================================
@@ -130,6 +156,57 @@ def extrair_ano_semana(df: pd.DataFrame) -> pd.DataFrame:
     se_str = df["se"].astype(str)
     df["ano"] = se_str.str[:4].astype(int)
     df["semana"] = se_str.str[4:].astype(int)
+    return df
+
+
+# =====================================================================
+# Métricas populacionais
+# =====================================================================
+
+def adicionar_metricas_populacionais(df: pd.DataFrame) -> pd.DataFrame:
+    """Adiciona métricas normalizadas pela população ao resumo por UF.
+
+    Colunas adicionadas:
+        - populacao: população estimada do estado (IBGE 2024)
+        - casos_por_100k: casos notificados por 100 mil habitantes
+        - pct_nacional: % dos casos em relação ao total nacional
+        - taxa_est_notif: razão entre casos estimados e notificados
+    """
+    if df.empty or "sigla_uf" not in df.columns:
+        return df
+
+    df = df.copy()
+
+    # População do estado (IBGE 2024)
+    df["populacao"] = df["sigla_uf"].map(POPULACAO_ESTADOS)
+
+    # Casos por 100 mil habitantes
+    if "casos" in df.columns:
+        df["casos_por_100k"] = np.where(
+            df["populacao"] > 0,
+            (df["casos"] / df["populacao"]) * 100_000,
+            0.0,
+        )
+        df["casos_por_100k"] = df["casos_por_100k"].round(1)
+
+        # Percentual do total nacional
+        total_nacional = df["casos"].sum()
+        df["pct_nacional"] = np.where(
+            total_nacional > 0,
+            (df["casos"] / total_nacional) * 100,
+            0.0,
+        )
+        df["pct_nacional"] = df["pct_nacional"].round(2)
+
+    # Razão estimado / notificado
+    if "casos" in df.columns and "casos_est" in df.columns:
+        df["taxa_est_notif"] = np.where(
+            df["casos"] > 0,
+            df["casos_est"] / df["casos"],
+            0.0,
+        )
+        df["taxa_est_notif"] = df["taxa_est_notif"].round(2)
+
     return df
 
 
@@ -238,8 +315,8 @@ def preparar_dados_mapa_estados(
 ) -> pd.DataFrame:
     """Prepara DataFrame para o mapa coroplético de estados.
 
-    Garante que a coluna 'cod_uf' está no formato string para merge
-    com o GeoJSON do IBGE (que usa codarea como string).
+    Garante que a coluna 'codarea' é string inteira (ex: "11", "35")
+    para match com o GeoJSON do IBGE (properties.codarea).
     """
     if resumo_uf.empty:
         return resumo_uf
@@ -250,8 +327,16 @@ def preparar_dados_mapa_estados(
     if "cod_uf" not in df.columns and "sigla_uf" in df.columns:
         df["cod_uf"] = df["sigla_uf"].map(SIGLA_PARA_COD_UF)
 
-    # codarea como string (para match com GeoJSON)
-    df["codarea"] = df["cod_uf"].astype(str)
+    # codarea como string inteira — defesa contra float64 (NaN → "11.0")
+    df["codarea"] = (
+        pd.to_numeric(df["cod_uf"], errors="coerce")
+        .fillna(0)
+        .astype(int)
+        .astype(str)
+    )
+
+    # Remover linhas com codarea inválido
+    df = df[df["codarea"] != "0"]
 
     return df
 
@@ -275,7 +360,12 @@ def preparar_dados_mapa_municipios(
     agg_filtrado = {k: v for k, v in agg_dict.items() if k in df.columns}
 
     resultado = df.groupby("geocode", as_index=False).agg(agg_filtrado)
-    resultado["codarea"] = resultado["geocode"].astype(str)
+    resultado["codarea"] = (
+        pd.to_numeric(resultado["geocode"], errors="coerce")
+        .fillna(0)
+        .astype(int)
+        .astype(str)
+    )
 
     return resultado
 

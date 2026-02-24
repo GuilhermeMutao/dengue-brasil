@@ -23,6 +23,7 @@ from src.constants import (
     ESCALA_SEQUENCIAL,
     LABELS_NIVEL_ALERTA,
     METRICAS,
+    POPULACAO_ESTADOS,
 )
 
 # ---------------------------------------------------------------------------
@@ -57,6 +58,7 @@ def mapa_coropletico_estados(
     feature_id_key: str = "properties.codarea",
     metrica: str = "casos",
     titulo: str = "Casos de Dengue por Estado",
+    log_scale: bool = False,
 ) -> go.Figure:
     """Cria mapa coroplético dos estados brasileiros.
 
@@ -66,6 +68,7 @@ def mapa_coropletico_estados(
         feature_id_key: Chave no GeoJSON para matching (ex: 'properties.codarea').
         metrica: Coluna do df a ser colorida.
         titulo: Título do mapa.
+        log_scale: Se True, aplica escala logarítmica nas cores.
     """
     if df.empty:
         fig = go.Figure()
@@ -80,33 +83,73 @@ def mapa_coropletico_estados(
         fig.add_annotation(text="Dados sem codarea", showarrow=False)
         return _aplicar_layout(fig, titulo)
 
-    # Nome para hover
-    hover_name = "sigla_uf" if "sigla_uf" in df.columns else "codarea"
-    hover_data = {}
-    if "nome_uf" in df.columns:
-        hover_data["nome_uf"] = True
-    if "casos" in df.columns and metrica != "casos":
-        hover_data["casos"] = ":,.0f"
+    plot_df = df.copy()
+
+    # Fallback se a métrica não existir no DataFrame
+    if metrica not in plot_df.columns:
+        metrica = "casos" if "casos" in plot_df.columns else plot_df.select_dtypes(include="number").columns[0]
+        label_metrica = METRICAS.get(metrica, metrica.title())
+
+    # Escala logarítmica: criar coluna auxiliar para cor
+    col_cor = metrica
+    if log_scale and metrica in plot_df.columns:
+        plot_df["_log_metrica"] = np.log1p(plot_df[metrica].fillna(0))
+        col_cor = "_log_metrica"
+
+    # Construir customdata para hover rico
+    hover_cols = []
+    customdata_cols = []
+    for c in ["sigla_uf", "nome_uf", "populacao", "casos", "casos_est",
+              "inc", "casos_por_100k", "pct_nacional", "nivel"]:
+        if c in plot_df.columns:
+            hover_cols.append(c)
+            customdata_cols.append(c)
+
+    # Hover name
+    hover_name = "sigla_uf" if "sigla_uf" in plot_df.columns else "codarea"
 
     fig = px.choropleth(
-        df,
+        plot_df,
         geojson=geojson,
         locations="codarea",
         featureidkey=feature_id_key,
-        color=metrica,
+        color=col_cor,
         hover_name=hover_name,
-        hover_data=hover_data,
+        custom_data=customdata_cols if customdata_cols else None,
         color_continuous_scale=ESCALA_CALOR,
-        labels={metrica: label_metrica},
+        labels={col_cor: label_metrica + (" (log)" if log_scale else "")},
     )
+
+    # Hover template rico
+    if customdata_cols:
+        ht_parts = ["<b>%{hovertext}</b>"]
+        for i, c in enumerate(customdata_cols):
+            lbl = METRICAS.get(c, c.replace("_", " ").title())
+            if c in ("casos", "casos_est", "populacao"):
+                ht_parts.append(f"{lbl}: %{{customdata[{i}]:,.0f}}")
+            elif c in ("inc", "casos_por_100k"):
+                ht_parts.append(f"{lbl}: %{{customdata[{i}]:.1f}}")
+            elif c == "pct_nacional":
+                ht_parts.append(f"{lbl}: %{{customdata[{i}]:.2f}}%")
+            elif c == "nivel":
+                ht_parts.append(f"{lbl}: %{{customdata[{i}]}}")
+            elif c in ("sigla_uf", "nome_uf"):
+                pass  # já no hovertext
+            else:
+                ht_parts.append(f"{lbl}: %{{customdata[{i}]}}")
+        ht_parts.append("<extra></extra>")
+        fig.update_traces(hovertemplate="<br>".join(ht_parts))
 
     fig.update_geos(
         fitbounds="locations",
         visible=False,
-        bgcolor="rgba(0,0,0,0)",
+        showframe=False,
+        showcoastlines=False,
     )
 
     fig.update_layout(
+        height=600,
+        margin=dict(l=0, r=0, t=40, b=0),
         coloraxis_colorbar=dict(
             title=dict(text=label_metrica, font=dict(size=12)),
             thickness=15,
@@ -125,6 +168,7 @@ def mapa_coropletico_municipios(
     titulo: str = "Casos de Dengue por Município",
     center: Optional[dict] = None,
     zoom: int = 5,
+    log_scale: bool = False,
 ) -> go.Figure:
     """Cria mapa coroplético de municípios usando Mapbox (open-street-map).
 
@@ -136,6 +180,7 @@ def mapa_coropletico_municipios(
         titulo: Título.
         center: Dict com lat/lon do centro do mapa.
         zoom: Zoom inicial.
+        log_scale: Se True, aplica escala logarítmica.
     """
     if df.empty:
         fig = go.Figure()
@@ -147,18 +192,28 @@ def mapa_coropletico_municipios(
     if center is None:
         center = {"lat": -14.2, "lon": -51.9}
 
+    plot_df = df.copy()
+    col_cor = metrica
+    if log_scale and metrica in plot_df.columns:
+        plot_df["_log_metrica"] = np.log1p(plot_df[metrica].fillna(0))
+        col_cor = "_log_metrica"
+
+    # Hover name
+    hover_name = "nome" if "nome" in plot_df.columns else "codarea"
+
     fig = px.choropleth_mapbox(
-        df,
+        plot_df,
         geojson=geojson,
         locations="codarea",
         featureidkey=feature_id_key,
-        color=metrica,
+        color=col_cor,
+        hover_name=hover_name,
         color_continuous_scale=ESCALA_CALOR,
         mapbox_style="open-street-map",
         zoom=zoom,
         center=center,
         opacity=0.7,
-        labels={metrica: label_metrica},
+        labels={col_cor: label_metrica + (" (log)" if log_scale else "")},
     )
 
     fig.update_layout(
@@ -519,6 +574,122 @@ def gauge_nivel_alerta(
     )
 
     return fig
+
+
+# =====================================================================
+# Gráficos climáticos
+# =====================================================================
+
+def grafico_clima_dual_axis(
+    df: pd.DataFrame,
+    coluna_casos: str = "casos",
+    coluna_temp: str = "tmed",
+    titulo: str = "Casos × Temperatura Média",
+) -> go.Figure:
+    """Gráfico de linhas com eixo Y duplo: casos (esquerdo) e temperatura (direito)."""
+    if df.empty:
+        fig = go.Figure()
+        fig.add_annotation(text="Sem dados disponíveis", showarrow=False, font=dict(size=20))
+        return _aplicar_layout(fig, titulo)
+
+    coluna_x = "data" if "data" in df.columns else "se"
+    df_s = df.sort_values(coluna_x)
+
+    fig = go.Figure()
+
+    # Casos
+    fig.add_trace(
+        go.Scatter(
+            x=df_s[coluna_x], y=df_s[coluna_casos],
+            name="Casos Notificados", mode="lines",
+            line=dict(color=COR_PRIMARIA, width=2),
+            yaxis="y",
+        )
+    )
+
+    # Temperatura / Umidade
+    label_clima = {
+        "tmin": "Temp. Mínima (°C)", "tmed": "Temp. Média (°C)", "tmax": "Temp. Máxima (°C)",
+        "umid_min": "Umid. Mínima (%)", "umid_med": "Umid. Média (%)", "umid_max": "Umid. Máxima (%)",
+    }.get(coluna_temp, coluna_temp)
+
+    if coluna_temp in df_s.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=df_s[coluna_x], y=df_s[coluna_temp],
+                name=label_clima, mode="lines",
+                line=dict(color=COR_SECUNDARIA, width=2, dash="dot"),
+                yaxis="y2",
+            )
+        )
+
+    fig.update_layout(
+        yaxis=dict(title="Casos Notificados", side="left", showgrid=True, gridcolor="rgba(0,0,0,0.05)"),
+        yaxis2=dict(title=label_clima, side="right", overlaying="y", showgrid=False),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        hovermode="x unified",
+    )
+
+    return _aplicar_layout(fig, titulo)
+
+
+def scatter_correlacao(
+    df: pd.DataFrame,
+    coluna_x: str = "tmed",
+    coluna_y: str = "casos",
+    titulo: str = "Correlação: Temperatura × Casos",
+) -> go.Figure:
+    """Scatter plot com linha de tendência (OLS) para análise de correlação."""
+    if df.empty or coluna_x not in df.columns or coluna_y not in df.columns:
+        fig = go.Figure()
+        fig.add_annotation(text="Sem dados disponíveis", showarrow=False, font=dict(size=20))
+        return _aplicar_layout(fig, titulo)
+
+    label_x_map = {
+        "tmin": "Temp. Mínima (°C)", "tmed": "Temp. Média (°C)", "tmax": "Temp. Máxima (°C)",
+        "umid_min": "Umid. Mínima (%)", "umid_med": "Umid. Média (%)", "umid_max": "Umid. Máxima (%)",
+    }
+    label_y = METRICAS.get(coluna_y, coluna_y.title())
+    label_x = label_x_map.get(coluna_x, coluna_x)
+
+    fig = px.scatter(
+        df.dropna(subset=[coluna_x, coluna_y]),
+        x=coluna_x, y=coluna_y,
+        trendline="ols",
+        labels={coluna_x: label_x, coluna_y: label_y},
+        opacity=0.5,
+    )
+    fig.update_traces(marker=dict(color=COR_PRIMARIA, size=5))
+
+    return _aplicar_layout(fig, titulo)
+
+
+def serie_curva_epidemica(
+    df: pd.DataFrame,
+    coluna_valor: str = "casos",
+    titulo: str = "Curva Epidêmica — Sobreposição Anual",
+) -> go.Figure:
+    """Gráfico com sobreposição de curvas anuais (SE 1–52 no eixo X, uma série por ano)."""
+    if df.empty or "se" not in df.columns:
+        fig = go.Figure()
+        fig.add_annotation(text="Sem dados disponíveis", showarrow=False, font=dict(size=20))
+        return _aplicar_layout(fig, titulo)
+
+    df_t = df.copy()
+    se_str = df_t["se"].astype(str)
+    df_t["ano"] = se_str.str[:4].astype(int)
+    df_t["semana"] = se_str.str[4:].astype(int)
+
+    label_y = METRICAS.get(coluna_valor, coluna_valor.title())
+
+    fig = px.line(
+        df_t.sort_values(["ano", "semana"]),
+        x="semana", y=coluna_valor, color="ano",
+        labels={"semana": "Semana Epidemiológica", coluna_valor: label_y, "ano": "Ano"},
+    )
+    fig.update_xaxes(dtick=4, range=[1, 52])
+    fig.update_layout(hovermode="x unified")
+    return _aplicar_layout(fig, titulo)
 
 
 def indicador_simples(

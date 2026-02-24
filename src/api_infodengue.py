@@ -123,6 +123,7 @@ def buscar_dados_estado_capitais(
     sigla_uf: str,
     ey_start: int,
     ey_end: int,
+    disease: str = DOENCA_PADRAO,
 ) -> pd.DataFrame:
     """Busca dados da CAPITAL do estado como proxy rápido.
 
@@ -137,6 +138,7 @@ def buscar_dados_estado_capitais(
         geocode=info["capital_geocode"],
         ey_start=ey_start,
         ey_end=ey_end,
+        disease=disease,
     )
 
     if df.empty:
@@ -158,6 +160,7 @@ def buscar_dados_municipios_uf(
     ey_start: int,
     ey_end: int,
     max_municipios: Optional[int] = None,
+    disease: str = DOENCA_PADRAO,
 ) -> pd.DataFrame:
     """Busca dados do InfoDengue para uma lista de municípios.
 
@@ -174,7 +177,7 @@ def buscar_dados_municipios_uf(
 
     for i, gc in enumerate(geocodes):
         try:
-            df = buscar_dados_municipio(gc, ey_start, ey_end)
+            df = buscar_dados_municipio(gc, ey_start, ey_end, disease=disease)
             if not df.empty:
                 frames.append(df)
         except Exception:
@@ -211,6 +214,7 @@ def buscar_dados_municipios_uf(
 def buscar_dados_brasil_capitais(
     ey_start: int,
     ey_end: int,
+    disease: str = DOENCA_PADRAO,
 ) -> pd.DataFrame:
     """Busca dados de TODAS as 27 capitais e consolida.
 
@@ -219,7 +223,7 @@ def buscar_dados_brasil_capitais(
     frames: list[pd.DataFrame] = []
 
     for sigla in sorted(ESTADOS.keys()):
-        df = buscar_dados_estado_capitais(sigla, ey_start, ey_end)
+        df = buscar_dados_estado_capitais(sigla, ey_start, ey_end, disease=disease)
         if not df.empty:
             frames.append(df)
         time.sleep(_DELAY_ENTRE_REQUISICOES)
@@ -238,6 +242,7 @@ def agregar_nacional_por_semana(df: pd.DataFrame) -> pd.DataFrame:
     """Agrega dados de todas as capitais por semana epidemiológica.
 
     Soma casos/casos_est; média ponderada de incidência e Rt.
+    Preserva dados climáticos (média) e p_rt1.
     """
     if df.empty:
         return df
@@ -252,8 +257,14 @@ def agregar_nacional_por_semana(df: pd.DataFrame) -> pd.DataFrame:
         agg_dict["inc"] = "mean"
     if "rt" in df.columns:
         agg_dict["rt"] = "mean"
+    if "p_rt1" in df.columns:
+        agg_dict["p_rt1"] = "mean"
     if "nivel" in df.columns:
         agg_dict["nivel"] = "max"
+    # Dados climáticos
+    for col_clima in ["tmin", "tmed", "tmax", "umid_min", "umid_med", "umid_max"]:
+        if col_clima in df.columns:
+            agg_dict[col_clima] = "mean"
 
     cols_presentes = [c for c in agg_dict if c in df.columns]
     agg_filtrado = {k: v for k, v in agg_dict.items() if k in cols_presentes}
@@ -277,12 +288,18 @@ def agregar_por_uf_semana(df: pd.DataFrame) -> pd.DataFrame:
         agg_dict["inc"] = "mean"
     if "rt" in df.columns:
         agg_dict["rt"] = "mean"
+    if "p_rt1" in df.columns:
+        agg_dict["p_rt1"] = "mean"
     if "nivel" in df.columns:
         agg_dict["nivel"] = "max"
     if "nome_uf" in df.columns:
         agg_dict["nome_uf"] = "first"
     if "regiao" in df.columns:
         agg_dict["regiao"] = "first"
+    # Dados climáticos
+    for col_clima in ["tmin", "tmed", "tmax", "umid_min", "umid_med", "umid_max"]:
+        if col_clima in df.columns:
+            agg_dict[col_clima] = "mean"
 
     agg_filtrado = {k: v for k, v in agg_dict.items() if k in df.columns}
 
@@ -303,14 +320,22 @@ def resumo_por_uf(df: pd.DataFrame) -> pd.DataFrame:
         agg_dict["inc"] = "mean"
     if "rt" in df.columns:
         agg_dict["rt"] = "mean"
+    if "p_rt1" in df.columns:
+        agg_dict["p_rt1"] = "mean"
     if "nivel" in df.columns:
         agg_dict["nivel"] = lambda x: x.mode().iloc[0] if not x.mode().empty else 1
     if "nome_uf" in df.columns:
         agg_dict["nome_uf"] = "first"
     if "regiao" in df.columns:
         agg_dict["regiao"] = "first"
+    if "cod_uf" in df.columns:
+        agg_dict["cod_uf"] = "first"
     if "populacao" in df.columns:
         agg_dict["populacao"] = "first"
+    # Dados climáticos
+    for col_clima in ["tmin", "tmed", "tmax", "umid_min", "umid_med", "umid_max"]:
+        if col_clima in df.columns:
+            agg_dict[col_clima] = "mean"
 
     agg_filtrado = {k: v for k, v in agg_dict.items() if k in df.columns}
 
