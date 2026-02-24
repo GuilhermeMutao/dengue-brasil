@@ -359,7 +359,7 @@ def preparar_dados_mapa_municipios(
     if "inc" in df.columns:
         agg_dict["inc"] = "mean"
     if "nivel" in df.columns:
-        agg_dict["nivel"] = "max"
+        agg_dict["nivel"] = lambda x: x.mode().iloc[0] if not x.mode().empty else 1
 
     agg_filtrado = {k: v for k, v in agg_dict.items() if k in df.columns}
 

@@ -339,7 +339,7 @@ def agregar_nacional_por_semana(df: pd.DataFrame) -> pd.DataFrame:
     if "p_rt1" in df.columns:
         agg_dict["p_rt1"] = "mean"
     if "nivel" in df.columns:
-        agg_dict["nivel"] = "max"
+        agg_dict["nivel"] = lambda x: x.mode().iloc[0] if not x.mode().empty else 1
     # Dados climáticos
     for col_clima in ["tmin", "tmed", "tmax", "umid_min", "umid_med", "umid_max"]:
         if col_clima in df.columns:
