@@ -3,12 +3,15 @@ Módulo de criação de gráficos Plotly para o Dashboard Dengue Brasil.
 
 Cada função retorna um objeto plotly.graph_objects.Figure pronto
 para ser exibido via st.plotly_chart().
+Mapas coropléticos usam Folium (retornam folium.Map).
 """
 
 from __future__ import annotations
 
 from typing import Optional
 
+import branca.colormap as cm
+import folium
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -49,7 +52,7 @@ def _aplicar_layout(fig: go.Figure, title: str = "") -> go.Figure:
 
 
 # =====================================================================
-# Mapas coropléticos
+# Mapas coropléticos (Folium)
 # =====================================================================
 
 def mapa_coropletico_estados(
@@ -59,105 +62,141 @@ def mapa_coropletico_estados(
     metrica: str = "casos",
     titulo: str = "Casos de Dengue por Estado",
     log_scale: bool = False,
-) -> go.Figure:
-    """Cria mapa coroplético dos estados brasileiros.
+) -> folium.Map:
+    """Cria mapa coroplético dos estados brasileiros com Folium.
 
-    Parâmetros:
-        df: DataFrame com colunas 'codarea' (str) e a métrica desejada.
-        geojson: GeoJSON dos estados (IBGE Malhas v3).
-        feature_id_key: Chave no GeoJSON para matching (ex: 'properties.codarea').
-        metrica: Coluna do df a ser colorida.
-        titulo: Título do mapa.
-        log_scale: Se True, aplica escala logarítmica nas cores.
+    Retorna um objeto folium.Map para exibição via st_folium.
     """
-    if df.empty:
-        fig = go.Figure()
-        fig.add_annotation(text="Sem dados disponíveis", showarrow=False, font=dict(size=20))
-        return _aplicar_layout(fig, titulo)
+    m = folium.Map(
+        location=[-14.2, -51.9],
+        zoom_start=4,
+        tiles="CartoDB positron",
+        control_scale=True,
+    )
 
-    label_metrica = METRICAS.get(metrica, metrica.title())
-
-    # Garantir coluna codarea
-    if "codarea" not in df.columns:
-        fig = go.Figure()
-        fig.add_annotation(text="Dados sem codarea", showarrow=False)
-        return _aplicar_layout(fig, titulo)
+    if df.empty or "codarea" not in df.columns:
+        return m
 
     plot_df = df.copy()
 
-    # Fallback se a métrica não existir no DataFrame
+    # Fallback se a métrica não existir
     if metrica not in plot_df.columns:
         metrica = "casos" if "casos" in plot_df.columns else plot_df.select_dtypes(include="number").columns[0]
-        label_metrica = METRICAS.get(metrica, metrica.title())
 
-    # Escala logarítmica: criar coluna auxiliar para cor
+    label_metrica = METRICAS.get(metrica, metrica.title())
+
+    # Escala logarítmica
     col_cor = metrica
     if log_scale and metrica in plot_df.columns:
         plot_df["_log_metrica"] = np.log1p(plot_df[metrica].fillna(0))
         col_cor = "_log_metrica"
 
-    # Construir customdata para hover rico
-    hover_cols = []
-    customdata_cols = []
-    for c in ["sigla_uf", "nome_uf", "populacao", "casos", "casos_est",
-              "inc", "casos_por_100k", "pct_nacional", "nivel"]:
-        if c in plot_df.columns:
-            hover_cols.append(c)
-            customdata_cols.append(c)
+    # Colormap
+    vmin = float(plot_df[col_cor].min()) if not plot_df[col_cor].isna().all() else 0
+    vmax = float(plot_df[col_cor].max()) if not plot_df[col_cor].isna().all() else 1
+    if vmin == vmax:
+        vmax = vmin + 1
 
-    # Hover name
-    hover_name = "sigla_uf" if "sigla_uf" in plot_df.columns else "codarea"
-
-    fig = px.choropleth(
-        plot_df,
-        geojson=geojson,
-        locations="codarea",
-        featureidkey=feature_id_key,
-        color=col_cor,
-        hover_name=hover_name,
-        custom_data=customdata_cols if customdata_cols else None,
-        color_continuous_scale=ESCALA_CALOR,
-        labels={col_cor: label_metrica + (" (log)" if log_scale else "")},
+    colormap = cm.LinearColormap(
+        colors=["#FFFFB2", "#FED976", "#FEB24C", "#FD8D3C", "#FC4E2A", "#E31A1C", "#B10026"],
+        vmin=vmin,
+        vmax=vmax,
+        caption=label_metrica + (" (log)" if log_scale else ""),
     )
 
-    # Hover template rico
-    if customdata_cols:
-        ht_parts = ["<b>%{hovertext}</b>"]
-        for i, c in enumerate(customdata_cols):
-            lbl = METRICAS.get(c, c.replace("_", " ").title())
-            if c in ("casos", "casos_est", "populacao"):
-                ht_parts.append(f"{lbl}: %{{customdata[{i}]:,.0f}}")
-            elif c in ("inc", "casos_por_100k"):
-                ht_parts.append(f"{lbl}: %{{customdata[{i}]:.1f}}")
-            elif c == "pct_nacional":
-                ht_parts.append(f"{lbl}: %{{customdata[{i}]:.2f}}%")
-            elif c == "nivel":
-                ht_parts.append(f"{lbl}: %{{customdata[{i}]}}")
-            elif c in ("sigla_uf", "nome_uf"):
-                pass  # já no hovertext
-            else:
-                ht_parts.append(f"{lbl}: %{{customdata[{i}]}}")
-        ht_parts.append("<extra></extra>")
-        fig.update_traces(hovertemplate="<br>".join(ht_parts))
+    # Indexar dados por codarea
+    dados_por_codarea = {}
+    for _, row in plot_df.iterrows():
+        dados_por_codarea[str(row["codarea"])] = row
 
-    fig.update_geos(
-        fitbounds="locations",
-        visible=False,
-        showframe=False,
-        showcoastlines=False,
-    )
+    def style_function(feature):
+        codarea = str(feature["properties"].get("codarea", ""))
+        row = dados_por_codarea.get(codarea)
+        if row is not None and pd.notna(row.get(col_cor)):
+            valor = float(row[col_cor])
+            cor = colormap(valor)
+        else:
+            cor = "#cccccc"
+        return {
+            "fillColor": cor,
+            "color": "#333333",
+            "weight": 1,
+            "fillOpacity": 0.7,
+        }
 
-    fig.update_layout(
-        height=600,
-        margin=dict(l=0, r=0, t=40, b=0),
-        coloraxis_colorbar=dict(
-            title=dict(text=label_metrica, font=dict(size=12)),
-            thickness=15,
-            len=0.7,
+    def highlight_function(feature):
+        return {
+            "weight": 3,
+            "color": "#000000",
+            "fillOpacity": 0.85,
+        }
+
+    # Construir tooltip fields
+    tooltip_fields = ["codarea"]
+    tooltip_aliases = ["Código:"]
+    for col, alias in [
+        ("sigla_uf", "UF:"), ("nome_uf", "Estado:"), ("casos", "Casos:"),
+        ("casos_est", "Casos Est.:"), ("casos_por_100k", "Casos/100k:"),
+        ("inc", "Incidência:"), ("nivel", "Nível Alerta:"),
+    ]:
+        if col in plot_df.columns:
+            tooltip_fields.append(col)
+            tooltip_aliases.append(alias)
+
+    # Injetar dados no GeoJSON para tooltip
+    geojson_enriquecido = _enriquecer_geojson(geojson, plot_df, tooltip_fields)
+
+    folium.GeoJson(
+        geojson_enriquecido,
+        name=titulo,
+        style_function=style_function,
+        highlight_function=highlight_function,
+        tooltip=folium.GeoJsonTooltip(
+            fields=tooltip_fields,
+            aliases=tooltip_aliases,
+            localize=True,
+            sticky=True,
+            style="font-size: 13px;",
         ),
-    )
+    ).add_to(m)
 
-    return _aplicar_layout(fig, titulo)
+    colormap.add_to(m)
+    m.fit_bounds(m.get_bounds())
+
+    return m
+
+
+def _enriquecer_geojson(
+    geojson: dict,
+    df: pd.DataFrame,
+    campos: list[str],
+) -> dict:
+    """Injeta dados do DataFrame nas properties do GeoJSON para tooltips."""
+    import copy
+    geo = copy.deepcopy(geojson)
+    dados_map = {}
+    for _, row in df.iterrows():
+        dados_map[str(row.get("codarea", ""))] = row
+
+    for feature in geo.get("features", []):
+        codarea = str(feature["properties"].get("codarea", ""))
+        row = dados_map.get(codarea)
+        for campo in campos:
+            if campo == "codarea":
+                continue
+            if row is not None and campo in row.index:
+                val = row[campo]
+                if isinstance(val, (np.integer, np.int64)):
+                    val = int(val)
+                elif isinstance(val, (np.floating, np.float64)):
+                    val = round(float(val), 2)
+                elif pd.isna(val):
+                    val = "—"
+                feature["properties"][campo] = val
+            else:
+                feature["properties"][campo] = "—"
+
+    return geo
 
 
 def mapa_coropletico_municipios(
@@ -167,65 +206,96 @@ def mapa_coropletico_municipios(
     metrica: str = "casos",
     titulo: str = "Casos de Dengue por Município",
     center: Optional[dict] = None,
-    zoom: int = 5,
+    zoom: int = 6,
     log_scale: bool = False,
-) -> go.Figure:
-    """Cria mapa coroplético de municípios usando Mapbox (open-street-map).
+) -> folium.Map:
+    """Cria mapa coroplético de municípios com Folium.
 
-    Parâmetros:
-        df: DataFrame com 'codarea' (str) e a métrica.
-        geojson: GeoJSON dos municípios da UF.
-        feature_id_key: Chave no GeoJSON.
-        metrica: Coluna a colorir.
-        titulo: Título.
-        center: Dict com lat/lon do centro do mapa.
-        zoom: Zoom inicial.
-        log_scale: Se True, aplica escala logarítmica.
+    Retorna um objeto folium.Map para exibição via st_folium.
     """
-    if df.empty:
-        fig = go.Figure()
-        fig.add_annotation(text="Sem dados disponíveis", showarrow=False, font=dict(size=20))
-        return _aplicar_layout(fig, titulo)
-
-    label_metrica = METRICAS.get(metrica, metrica.title())
-
     if center is None:
         center = {"lat": -14.2, "lon": -51.9}
 
+    m = folium.Map(
+        location=[center["lat"], center["lon"]],
+        zoom_start=zoom,
+        tiles="CartoDB positron",
+        control_scale=True,
+    )
+
+    if df.empty or "codarea" not in df.columns:
+        return m
+
+    label_metrica = METRICAS.get(metrica, metrica.title())
     plot_df = df.copy()
+
     col_cor = metrica
     if log_scale and metrica in plot_df.columns:
         plot_df["_log_metrica"] = np.log1p(plot_df[metrica].fillna(0))
         col_cor = "_log_metrica"
 
-    # Hover name
-    hover_name = "nome" if "nome" in plot_df.columns else "codarea"
+    vmin = float(plot_df[col_cor].min()) if not plot_df[col_cor].isna().all() else 0
+    vmax = float(plot_df[col_cor].max()) if not plot_df[col_cor].isna().all() else 1
+    if vmin == vmax:
+        vmax = vmin + 1
 
-    fig = px.choropleth_mapbox(
-        plot_df,
-        geojson=geojson,
-        locations="codarea",
-        featureidkey=feature_id_key,
-        color=col_cor,
-        hover_name=hover_name,
-        color_continuous_scale=ESCALA_CALOR,
-        mapbox_style="open-street-map",
-        zoom=zoom,
-        center=center,
-        opacity=0.7,
-        labels={col_cor: label_metrica + (" (log)" if log_scale else "")},
+    colormap = cm.LinearColormap(
+        colors=["#FFFFB2", "#FED976", "#FEB24C", "#FD8D3C", "#FC4E2A", "#E31A1C", "#B10026"],
+        vmin=vmin,
+        vmax=vmax,
+        caption=label_metrica + (" (log)" if log_scale else ""),
     )
 
-    fig.update_layout(
-        margin=dict(l=0, r=0, t=50, b=0),
-        coloraxis_colorbar=dict(
-            title=dict(text=label_metrica, font=dict(size=12)),
-            thickness=15,
-            len=0.7,
+    dados_por_codarea = {}
+    for _, row in plot_df.iterrows():
+        dados_por_codarea[str(row["codarea"])] = row
+
+    def style_function(feature):
+        codarea = str(feature["properties"].get("codarea", ""))
+        row = dados_por_codarea.get(codarea)
+        if row is not None and pd.notna(row.get(col_cor)):
+            cor = colormap(float(row[col_cor]))
+        else:
+            cor = "#cccccc"
+        return {
+            "fillColor": cor,
+            "color": "#666666",
+            "weight": 0.5,
+            "fillOpacity": 0.7,
+        }
+
+    def highlight_function(feature):
+        return {"weight": 2, "color": "#000000", "fillOpacity": 0.85}
+
+    tooltip_fields = ["codarea"]
+    tooltip_aliases = ["Geocode:"]
+    for col, alias in [
+        ("nome", "Município:"), ("casos", "Casos:"),
+        ("casos_est", "Casos Est.:"), ("inc", "Incidência:"),
+        ("nivel", "Nível Alerta:"),
+    ]:
+        if col in plot_df.columns:
+            tooltip_fields.append(col)
+            tooltip_aliases.append(alias)
+
+    geojson_enriquecido = _enriquecer_geojson(geojson, plot_df, tooltip_fields)
+
+    folium.GeoJson(
+        geojson_enriquecido,
+        name=titulo,
+        style_function=style_function,
+        highlight_function=highlight_function,
+        tooltip=folium.GeoJsonTooltip(
+            fields=tooltip_fields,
+            aliases=tooltip_aliases,
+            localize=True,
+            sticky=True,
+            style="font-size: 13px;",
         ),
-    )
+    ).add_to(m)
 
-    return _aplicar_layout(fig, titulo)
+    colormap.add_to(m)
+    return m
 
 
 # =====================================================================
@@ -275,6 +345,7 @@ def serie_temporal(
         showgrid=True,
         gridwidth=1,
         gridcolor="rgba(0,0,0,0.05)",
+        tickformat="%d/%m/%Y" if coluna_x == "data" else None,
     )
     fig.update_yaxes(
         showgrid=True,
@@ -343,7 +414,11 @@ def serie_temporal_com_estimativa(
             )
         )
 
-    fig.update_xaxes(showgrid=True, gridcolor="rgba(0,0,0,0.05)")
+    fig.update_xaxes(
+        showgrid=True,
+        gridcolor="rgba(0,0,0,0.05)",
+        tickformat="%d/%m/%Y" if coluna_x == "data" else None,
+    )
     fig.update_yaxes(showgrid=True, gridcolor="rgba(0,0,0,0.05)")
 
     return _aplicar_layout(fig, titulo)
@@ -626,6 +701,7 @@ def grafico_clima_dual_axis(
     fig.update_layout(
         yaxis=dict(title="Casos Notificados", side="left", showgrid=True, gridcolor="rgba(0,0,0,0.05)"),
         yaxis2=dict(title=label_clima, side="right", overlaying="y", showgrid=False),
+        xaxis=dict(tickformat="%d/%m/%Y") if coluna_x == "data" else {},
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         hovermode="x unified",
     )

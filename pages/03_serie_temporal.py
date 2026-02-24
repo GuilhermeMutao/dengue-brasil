@@ -6,8 +6,8 @@ import streamlit as st
 import pandas as pd
 
 from src.api_infodengue import (
-    buscar_dados_brasil_capitais,
-    buscar_dados_estado_capitais,
+    buscar_dados_brasil_top_municipios,
+    buscar_dados_estado_top_municipios,
     agregar_nacional_por_semana,
     agregar_por_uf_semana,
 )
@@ -97,7 +97,7 @@ _doenca = st.session_state.get("doenca", "dengue")
 # ---------------------------------------------------------------------------
 if modo == "Brasil (agregado)":
     with st.spinner("Buscando dados nacionais…"):
-        df_bruto = buscar_dados_brasil_capitais(ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
+        df_bruto = buscar_dados_brasil_top_municipios(ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
 
     if df_bruto.empty:
         st.error("⚠️ Não foi possível obter dados. Tente novamente.")
@@ -229,7 +229,7 @@ else:
     with st.spinner(f"Buscando dados de {len(ufs_selecionadas)} estados…"):
         frames = []
         for uf in ufs_selecionadas:
-            df_uf = buscar_dados_estado_capitais(uf, ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
+            df_uf = buscar_dados_estado_top_municipios(uf, ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
             if not df_uf.empty:
                 frames.append(df_uf)
 

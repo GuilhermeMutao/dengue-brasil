@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 
 from src.api_infodengue import (
-    buscar_dados_brasil_capitais,
+    buscar_dados_brasil_top_municipios,
     resumo_por_uf,
 )
 from src.data_processing import (
@@ -92,7 +92,7 @@ _doenca = st.session_state.get("doenca", "dengue")
 # Carregar dados
 # ---------------------------------------------------------------------------
 with st.spinner("Carregando dados para comparação…"):
-    df_bruto = buscar_dados_brasil_capitais(ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
+    df_bruto = buscar_dados_brasil_top_municipios(ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
 
 if df_bruto.empty:
     st.error("⚠️ Não foi possível obter dados. Tente novamente.")

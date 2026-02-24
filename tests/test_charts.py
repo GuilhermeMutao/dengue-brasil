@@ -5,6 +5,7 @@ Testes unitários para o módulo de gráficos.
 import pandas as pd
 import pytest
 import plotly.graph_objects as go
+import folium
 
 from src.charts import (
     mapa_coropletico_estados,
@@ -70,13 +71,13 @@ def geojson_fake():
 
 
 class TestMapaCoropleticoEstados:
-    def test_retorna_figure(self, df_estados, geojson_fake):
+    def test_retorna_folium_map(self, df_estados, geojson_fake):
         fig = mapa_coropletico_estados(df_estados, geojson_fake)
-        assert isinstance(fig, go.Figure)
+        assert isinstance(fig, folium.Map)
 
     def test_df_vazio(self, geojson_fake):
         fig = mapa_coropletico_estados(pd.DataFrame(), geojson_fake)
-        assert isinstance(fig, go.Figure)
+        assert isinstance(fig, folium.Map)
 
 
 class TestSerieTemporal:

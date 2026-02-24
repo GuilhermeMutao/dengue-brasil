@@ -18,6 +18,7 @@ from src.constants import (
     DOENCA_PADRAO,
     ESTADOS,
     INFODENGUE_BASE_URL,
+    TOP_MUNICIPIOS_POR_UF,
     UF_PARA_REGIAO,
 )
 
@@ -100,9 +101,12 @@ def buscar_dados_municipio(
     if "geocode" not in df.columns:
         df["geocode"] = geocode
 
-    # Converter data
+    # Converter data (API retorna timestamp Unix em milissegundos)
     if "data" in df.columns:
-        df["data"] = pd.to_datetime(df["data"], errors="coerce")
+        if pd.api.types.is_numeric_dtype(df["data"]):
+            df["data"] = pd.to_datetime(df["data"], unit="ms", errors="coerce")
+        else:
+            df["data"] = pd.to_datetime(df["data"], errors="coerce")
 
     # Converter se para int
     if "se" in df.columns:
@@ -227,6 +231,81 @@ def buscar_dados_brasil_capitais(
         if not df.empty:
             frames.append(df)
         time.sleep(_DELAY_ENTRE_REQUISICOES)
+
+    if not frames:
+        return pd.DataFrame()
+
+    return pd.concat(frames, ignore_index=True)
+
+
+# =====================================================================
+# Nível nacional: top N municípios por estado (mais representativo)
+# =====================================================================
+
+@st.cache_data(
+    ttl=3_600,
+    show_spinner="Buscando dados do estado (top municípios)…",
+)
+def buscar_dados_estado_top_municipios(
+    sigla_uf: str,
+    ey_start: int,
+    ey_end: int,
+    disease: str = DOENCA_PADRAO,
+) -> pd.DataFrame:
+    """Busca dados dos maiores municípios do estado.
+
+    Usa a lista pré-definida TOP_MUNICIPIOS_POR_UF (até 5 cidades)
+    para obter um nível de alerta mais representativo do estado.
+    """
+    info = ESTADOS.get(sigla_uf)
+    if not info:
+        return pd.DataFrame()
+
+    geocodes = TOP_MUNICIPIOS_POR_UF.get(sigla_uf, [info["capital_geocode"]])
+
+    frames: list[pd.DataFrame] = []
+    for gc in geocodes:
+        try:
+            df = buscar_dados_municipio(gc, ey_start, ey_end, disease=disease)
+            if not df.empty:
+                frames.append(df)
+        except Exception:
+            pass
+        time.sleep(_DELAY_ENTRE_REQUISICOES)
+
+    if not frames:
+        return pd.DataFrame()
+
+    result = pd.concat(frames, ignore_index=True)
+    result["sigla_uf"] = sigla_uf
+    result["nome_uf"] = info["nome"]
+    result["regiao"] = UF_PARA_REGIAO.get(sigla_uf, "")
+    return result
+
+
+@st.cache_data(
+    ttl=3_600,
+    show_spinner="Carregando dados nacionais (principais municípios)…",
+)
+def buscar_dados_brasil_top_municipios(
+    ey_start: int,
+    ey_end: int,
+    disease: str = DOENCA_PADRAO,
+) -> pd.DataFrame:
+    """Busca dados dos top municípios de TODOS os 27 estados.
+
+    Mais representativo que apenas capitais: inclui os 5 maiores
+    municípios de cada estado (até 135 consultas, ~2-3 min no primeiro load).
+    Dados ficam em cache por 1 hora.
+    """
+    frames: list[pd.DataFrame] = []
+
+    for sigla in sorted(ESTADOS.keys()):
+        df = buscar_dados_estado_top_municipios(
+            sigla, ey_start, ey_end, disease=disease
+        )
+        if not df.empty:
+            frames.append(df)
 
     if not frames:
         return pd.DataFrame()

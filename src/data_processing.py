@@ -38,9 +38,13 @@ def limpar_dados(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.copy()
 
-    # Converter data
+    # Converter data (pode vir como timestamp ms ou string ISO)
     if "data" in df.columns:
-        df["data"] = pd.to_datetime(df["data"], errors="coerce")
+        if not pd.api.types.is_datetime64_any_dtype(df["data"]):
+            if pd.api.types.is_numeric_dtype(df["data"]):
+                df["data"] = pd.to_datetime(df["data"], unit="ms", errors="coerce")
+            else:
+                df["data"] = pd.to_datetime(df["data"], errors="coerce")
 
     # Remover linhas sem estimativa de casos
     if "casos_est" in df.columns:

@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 
 from src.api_infodengue import (
-    buscar_dados_brasil_capitais,
+    buscar_dados_brasil_top_municipios,
     agregar_nacional_por_semana,
     resumo_por_uf,
 )
@@ -28,6 +28,7 @@ from src.charts import (
     barras_agrupadas_regiao,
     gauge_nivel_alerta,
 )
+from streamlit_folium import st_folium
 from src.constants import (
     ANO_MINIMO,
     ANO_MAXIMO,
@@ -100,16 +101,16 @@ _nome_doenca = _nomes_doenca.get(_doenca, "Dengue")
 
 st.title(f"🦟 Visão Geral — {_nome_doenca} no Brasil")
 st.markdown(
-    f"Panorama nacional com base nos dados das **27 capitais estaduais** "
-    f"(*proxy* para visão por estado). Fonte: [InfoDengue](https://info.dengue.mat.br)."
+    f"Panorama nacional com base nos dados dos **principais municípios** "
+    f"de cada estado. Fonte: [InfoDengue](https://info.dengue.mat.br)."
 )
 st.divider()
 
 # ---------------------------------------------------------------------------
 # Carregar e processar dados
 # ---------------------------------------------------------------------------
-with st.spinner("Buscando dados das capitais brasileiras…"):
-    df_bruto = buscar_dados_brasil_capitais(ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
+with st.spinner("Buscando dados dos principais municípios…"):
+    df_bruto = buscar_dados_brasil_top_municipios(ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
 
 if df_bruto.empty:
     st.error("⚠️ Não foi possível obter dados da API InfoDengue. Tente novamente mais tarde.")
@@ -146,9 +147,9 @@ col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     st.metric(
-        label="Total de Casos (Capitais)",
+        label="Total de Casos",
         value=f"{kpis['total_casos']:,.0f}",
-        help="Soma dos casos notificados das capitais no período.",
+        help="Soma dos casos notificados dos principais municípios no período.",
     )
 
 with col2:
@@ -239,9 +240,9 @@ with st.container():
     with col_info:
         st.markdown(
             f"**Nível predominante**: {LABELS_NIVEL_ALERTA.get(nivel, '—')}\n\n"
-            f"Baseado na moda do nível de alerta das 27 capitais no período "
-            f"{ano_inicio}–{ano_fim}. O nível de alerta do InfoDengue considera "
-            f"incidência, Rt e tendência dos casos."
+            f"Baseado na moda do nível de alerta dos principais municípios "
+            f"de cada estado no período {ano_inicio}–{ano_fim}. O nível de "
+            f"alerta do InfoDengue considera incidência, Rt e tendência dos casos."
         )
 
 st.divider()
@@ -266,7 +267,7 @@ with col_mapa:
             titulo="",
             log_scale=log_scale,
         )
-        st.plotly_chart(fig_mapa, use_container_width=True)
+        st_folium(fig_mapa, use_container_width=True, height=500, returned_objects=[])
     except Exception as e:
         st.warning(f"Não foi possível carregar o mapa: {e}")
 
@@ -284,7 +285,7 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Série temporal nacional
 # ---------------------------------------------------------------------------
-st.subheader("📈 Evolução Temporal — Total Nacional (Capitais)")
+st.subheader("📈 Evolução Temporal — Total Nacional")
 
 if not df_nacional.empty:
     fig_serie = serie_temporal(
@@ -299,7 +300,7 @@ else:
 # ---------------------------------------------------------------------------
 # Tabela ranking de estados — Tabs Absoluto vs. Per Capita
 # ---------------------------------------------------------------------------
-st.subheader("🏆 Ranking de Capitais")
+st.subheader("🏆 Ranking por Estado")
 
 if not df_resumo_uf.empty:
     tab_abs, tab_pc = st.tabs(["📊 Por Volume (Absoluto)", "👤 Per Capita (por 100k hab.)"])

@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 
 from src.api_infodengue import (
-    buscar_dados_brasil_capitais,
+    buscar_dados_brasil_top_municipios,
     agregar_nacional_por_semana,
 )
 from src.data_processing import (
@@ -66,7 +66,7 @@ _doenca = st.session_state.get("doenca", "dengue")
 # Carregar dados
 # ---------------------------------------------------------------------------
 with st.spinner("Carregando dados nacionais…"):
-    df_bruto = buscar_dados_brasil_capitais(ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
+    df_bruto = buscar_dados_brasil_top_municipios(ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
 
 if df_bruto.empty:
     st.error("⚠️ Não foi possível obter dados. Tente novamente.")

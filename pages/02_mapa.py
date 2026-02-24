@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 
 from src.api_infodengue import (
-    buscar_dados_brasil_capitais,
+    buscar_dados_brasil_top_municipios,
     buscar_dados_municipios_uf,
     resumo_por_uf,
 )
@@ -27,6 +27,7 @@ from src.data_processing import (
     preparar_dados_mapa_municipios,
 )
 from src.charts import mapa_coropletico_estados, mapa_coropletico_municipios
+from streamlit_folium import st_folium
 from src.constants import (
     ANO_MINIMO,
     ANO_MAXIMO,
@@ -119,7 +120,7 @@ st.divider()
 # ---------------------------------------------------------------------------
 if nivel_geo == "Brasil (Estados)":
     with st.spinner("Carregando dados nacionais…"):
-        df_bruto = buscar_dados_brasil_capitais(ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
+        df_bruto = buscar_dados_brasil_top_municipios(ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
 
     if df_bruto.empty:
         st.error("⚠️ Não foi possível obter dados. Tente novamente.")
@@ -174,7 +175,7 @@ if nivel_geo == "Brasil (Estados)":
             titulo=f"{METRICAS.get(metrica, metrica)} por Estado ({ano_inicio}–{ano_fim})",
             log_scale=log_scale,
         )
-        st.plotly_chart(fig, use_container_width=True, key="mapa_estados")
+        st_folium(fig, use_container_width=True, height=600, returned_objects=[])
     except Exception as e:
         st.error(f"Erro ao renderizar mapa: {e}")
 
@@ -324,10 +325,10 @@ else:
             metrica=metrica_munic,
             titulo=f"{METRICAS.get(metrica_munic, metrica_munic)} — {info_uf['nome']} ({ano_inicio}–{ano_fim})",
             center=centro,
-            zoom=5,
+            zoom=6,
             log_scale=log_scale,
         )
-        st.plotly_chart(fig, use_container_width=True, key="mapa_munic")
+        st_folium(fig, use_container_width=True, height=600, returned_objects=[])
     except Exception as e:
         st.error(f"Erro ao renderizar mapa de municípios: {e}")
 

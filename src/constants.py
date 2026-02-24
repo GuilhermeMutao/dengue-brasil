@@ -171,6 +171,41 @@ POPULACAO_ESTADOS: dict[str, int] = {
 }
 
 # ---------------------------------------------------------------------------
+# Top 5 municípios mais populosos por estado (geocodes IBGE)
+# Usado para obter nível de alerta representativo do estado, não apenas capital
+# Fonte: IBGE Estimativas Populacionais 2024
+# ---------------------------------------------------------------------------
+TOP_MUNICIPIOS_POR_UF: dict[str, list[int]] = {
+    "AC": [1200401, 1200302, 1200336, 1200013, 1200179],  # Rio Branco, Cruzeiro do Sul, Sena Madureira, Acrelândia, Feijó
+    "AL": [2704302, 2700300, 2706307, 2701407, 2704906],  # Maceió, Arapiraca, Palmeira dos Índios, Penedo, Rio Largo
+    "AM": [1302603, 1303403, 1301902, 1304062, 1302504],  # Manaus, Parintins, Itacoatiara, Manacapuru, Maués
+    "AP": [1600303, 1600600, 1600154, 1600105, 1600204],  # Macapá, Santana, Laranjal do Jari, Amapá, Calçoene
+    "BA": [2927408, 2910800, 2930709, 2919553, 2905701],  # Salvador, Feira de Santana, Vitória da Conquista, Lauro de Freitas, Camaçari
+    "CE": [2304400, 2307304, 2303709, 2305233, 2309607],  # Fortaleza, Juazeiro do Norte, Caucaia, Maracanaú, Sobral
+    "DF": [5300108],  # Brasília (DF = município único)
+    "ES": [3205309, 3205002, 3201308, 3205200, 3201209],  # Vitória, Serra, Cariacica, Vila Velha, Cachoeiro de Itapemirim
+    "GO": [5208707, 5201405, 5200050, 5209903, 5219753],  # Goiânia, Aparecida de Goiânia, Águas Lindas de Goiás, Luziânia, Trindade
+    "MA": [2111300, 2105302, 2102002, 2104305, 2109106],  # São Luís, Imperatriz, Caxias, Codó, Paço do Lumiar
+    "MG": [3106200, 3106705, 3118601, 3170206, 3136702],  # Belo Horizonte, Betim, Contagem, Uberlândia, Juiz de Fora
+    "MS": [5002704, 5003702, 5002505, 5006309, 5007109],  # Campo Grande, Dourados, Corumbá, Ponta Porã, Três Lagoas
+    "MT": [5103403, 5108402, 5106224, 5103700, 5107602],  # Cuiabá, Rondonópolis, Sinop, Várzea Grande, Tangará da Serra
+    "PA": [1501402, 1500800, 1504422, 1505536, 1502400],  # Belém, Ananindeua, Marabá, Parauapebas, Castanhal
+    "PB": [2507507, 2504009, 2513901, 2503704, 2509602],  # João Pessoa, Campina Grande, Santa Rita, Cabedelo, Patos
+    "PE": [2611606, 2607901, 2609600, 2604106, 2610707],  # Recife, Jaboatão dos Guararapes, Olinda, Cabo de Santo Agostinho, Paulista
+    "PI": [2211001, 2207702, 2202208, 2205003, 2203503],  # Teresina, Parnaíba, Campo Maior, Floriano, Corrente
+    "PR": [4106902, 4113700, 4104808, 4115200, 4108304],  # Curitiba, Londrina, Cascavel, Maringá, Foz do Iguaçu
+    "RJ": [3304557, 3302858, 3301009, 3303302, 3303500],  # Rio de Janeiro, Duque de Caxias, Belford Roxo, Niterói, Nova Iguaçu
+    "RN": [2408102, 2407104, 2410004, 2408003, 2404002],  # Natal, Mossoró, Parnamirim, Macaíba, Ceará-Mirim
+    "RO": [1100205, 1100304, 1100114, 1100023, 1101005],  # Porto Velho, Ji-Paraná, Cacoal, Ariquemes, Vilhena
+    "RR": [1400100, 1400027, 1400050, 1400159, 1400175],  # Boa Vista, Caracaraí, Alto Alegre, Cantá, Pacaraima
+    "RS": [4314902, 4303905, 4309209, 4304606, 4307708],  # Porto Alegre, Caxias do Sul, Gravataí, Canoas, Esteio
+    "SC": [4205407, 4209102, 4204202, 4208203, 4211306],  # Florianópolis, Joinville, Criciúma, Itajaí, Lages
+    "SE": [2800308, 2804102, 2803609, 2802700, 2802106],  # Aracaju, Lagarto, Itabaiana, Estância, Capela
+    "SP": [3550308, 3518800, 3509502, 3547809, 3534401],  # São Paulo, Guarulhos, Campinas, Santo André, Osasco
+    "TO": [1721000, 1702109, 1710508, 1716109, 1718204],  # Palmas, Araguaína, Gurupi, Porto Nacional, Paraíso do Tocantins
+}
+
+# ---------------------------------------------------------------------------
 # Lista ordenada de siglas para exibição
 # ---------------------------------------------------------------------------
 LISTA_UFS: list[str] = sorted(ESTADOS.keys())
