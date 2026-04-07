@@ -25,6 +25,33 @@ from src.constants import (
 # ---------------------------------------------------------------------------
 _TIMEOUT = 30
 _DELAY_ENTRE_REQUISICOES = 0.15  # segundos entre chamadas consecutivas
+_COLUNAS_NUMERICAS_AGREGACAO = [
+    "se",
+    "casos",
+    "casos_est",
+    "inc",
+    "rt",
+    "p_rt1",
+    "nivel",
+    "tmin",
+    "tmed",
+    "tmax",
+    "umid_min",
+    "umid_med",
+    "umid_max",
+]
+
+
+def _normalizar_colunas_numericas(
+    df: pd.DataFrame,
+    colunas: list[str] | tuple[str, ...] = _COLUNAS_NUMERICAS_AGREGACAO,
+) -> pd.DataFrame:
+    """Converte campos agregados para número sem alterar o DataFrame original."""
+    df = df.copy()
+    for coluna in colunas:
+        if coluna in df.columns:
+            df[coluna] = pd.to_numeric(df[coluna], errors="coerce")
+    return df
 
 
 # =====================================================================
@@ -326,6 +353,8 @@ def agregar_nacional_por_semana(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
 
+    df = _normalizar_colunas_numericas(df)
+
     agg_dict: dict = {
         "casos": "sum",
         "casos_est": "sum",
@@ -360,6 +389,8 @@ def agregar_por_uf_semana(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or "sigla_uf" not in df.columns or "se" not in df.columns:
         return df
 
+    df = _normalizar_colunas_numericas(df)
+
     agg_dict: dict = {"casos": "sum", "casos_est": "sum"}
     if "data" in df.columns:
         agg_dict["data"] = "first"
@@ -393,6 +424,8 @@ def resumo_por_uf(df: pd.DataFrame) -> pd.DataFrame:
     """
     if df.empty or "sigla_uf" not in df.columns:
         return df
+
+    df = _normalizar_colunas_numericas(df)
 
     agg_dict: dict = {"casos": "sum", "casos_est": "sum"}
     if "inc" in df.columns:

@@ -59,8 +59,20 @@ def limpar_dados(df: pd.DataFrame) -> pd.DataFrame:
     if "geocode" in df.columns:
         df["geocode"] = pd.to_numeric(df["geocode"], errors="coerce").astype("Int64")
 
-    # Garantir que casos é numérico
-    for col in ["casos", "casos_est", "inc", "rt"]:
+    # Garantir que métricas usadas em cálculos e agregações são numéricas
+    for col in [
+        "casos",
+        "casos_est",
+        "inc",
+        "rt",
+        "p_rt1",
+        "tmin",
+        "tmed",
+        "tmax",
+        "umid_min",
+        "umid_med",
+        "umid_max",
+    ]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 

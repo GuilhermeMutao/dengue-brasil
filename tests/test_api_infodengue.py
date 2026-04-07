@@ -35,6 +35,18 @@ class TestAgregarNacionalPorSemana:
         assert len(resultado) == 2  # 2 semanas
         assert resultado["casos"].iloc[0] == 180  # 100 + 80
 
+    def test_agrega_colunas_numericas_como_texto(self, df_capitais):
+        df = df_capitais.copy()
+        df["p_rt1"] = pd.Series(["0.6", "0.8", "0.5", "0.7"], dtype="string")
+        df["tmed"] = pd.Series(["25.0", "26.0", "27.0", "28.0"], dtype="string")
+        df["nivel"] = pd.Series(["1", "1", "2", "1"], dtype="string")
+
+        resultado = agregar_nacional_por_semana(df)
+
+        assert resultado["p_rt1"].iloc[0] == pytest.approx(0.7)
+        assert resultado["tmed"].iloc[0] == pytest.approx(25.5)
+        assert resultado["nivel"].iloc[0] == 1
+
     def test_df_vazio(self):
         resultado = agregar_nacional_por_semana(pd.DataFrame())
         assert resultado.empty
@@ -44,6 +56,19 @@ class TestAgregarPorUfSemana:
     def test_agrega_por_uf(self, df_capitais):
         resultado = agregar_por_uf_semana(df_capitais)
         assert len(resultado) == 4  # 2 UFs × 2 semanas
+
+    def test_agrega_texto_numerico(self, df_capitais):
+        df = df_capitais.copy()
+        df["p_rt1"] = pd.Series(["0.6", "0.8", "0.5", "0.7"], dtype="string")
+        df["tmed"] = pd.Series(["25.0", "26.0", "27.0", "28.0"], dtype="string")
+
+        resultado = agregar_por_uf_semana(df)
+
+        sp_202401 = resultado[
+            (resultado["sigla_uf"] == "SP") & (resultado["se"] == 202401)
+        ]
+        assert sp_202401["p_rt1"].iloc[0] == pytest.approx(0.6)
+        assert sp_202401["tmed"].iloc[0] == pytest.approx(25.0)
 
     def test_df_vazio(self):
         resultado = agregar_por_uf_semana(pd.DataFrame())
@@ -56,6 +81,17 @@ class TestResumoPorUf:
         assert len(resultado) == 2  # 2 UFs
         sp = resultado[resultado["sigla_uf"] == "SP"]
         assert sp["casos"].iloc[0] == 250  # 100 + 150
+
+    def test_resumo_texto_numerico(self, df_capitais):
+        df = df_capitais.copy()
+        df["p_rt1"] = pd.Series(["0.6", "0.8", "0.5", "0.7"], dtype="string")
+        df["tmed"] = pd.Series(["25.0", "26.0", "27.0", "28.0"], dtype="string")
+
+        resultado = resumo_por_uf(df)
+
+        sp = resultado[resultado["sigla_uf"] == "SP"]
+        assert sp["p_rt1"].iloc[0] == pytest.approx(0.55)
+        assert sp["tmed"].iloc[0] == pytest.approx(26.0)
 
     def test_df_vazio(self):
         resultado = resumo_por_uf(pd.DataFrame())

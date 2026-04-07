@@ -88,6 +88,21 @@ class TestLimparDados:
         resultado = limpar_dados(df)
         assert pd.api.types.is_datetime64_any_dtype(resultado["data"])
 
+    def test_converte_indicadores_e_clima(self):
+        df = pd.DataFrame({
+            "casos": ["10", "20"],
+            "casos_est": ["11.0", "22.0"],
+            "p_rt1": pd.Series(["0.8", "0.9"], dtype="string"),
+            "tmed": pd.Series(["25.5", "26.5"], dtype="string"),
+            "umid_med": pd.Series(["75", "80"], dtype="string"),
+        })
+
+        resultado = limpar_dados(df)
+
+        assert pd.api.types.is_numeric_dtype(resultado["p_rt1"])
+        assert pd.api.types.is_numeric_dtype(resultado["tmed"])
+        assert pd.api.types.is_numeric_dtype(resultado["umid_med"])
+
     def test_df_vazio(self):
         df = pd.DataFrame()
         resultado = limpar_dados(df)
