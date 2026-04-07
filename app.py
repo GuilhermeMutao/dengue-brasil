@@ -7,8 +7,7 @@ Trabalho de Conclusão de Curso da Especialização em Ciência de Dados
 do IFTM — Campus Uberaba Parque Tecnológico.
 
 Autor: Guilherme José Morais Mutão
-Orientador: Prof.
-Camilo de Lelis Tosta Paula
+Orientador: Prof. Camilo de Lelis Tosta Paula
 Ano: 2025
 """
 
