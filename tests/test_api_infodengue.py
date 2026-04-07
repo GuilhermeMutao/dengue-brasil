@@ -20,6 +20,8 @@ def df_capitais():
         "data": pd.to_datetime(["2024-01-07"] * 2 + ["2024-01-14"] * 2),
         "casos": [100, 80, 150, 120],
         "casos_est": [110, 90, 160, 130],
+        "casos_est_min": [105, 85, 155, 125],
+        "casos_est_max": [120, 100, 170, 140],
         "inc": [5.0, 4.0, 6.0, 5.0],
         "rt": [1.2, 1.1, 1.3, 1.0],
         "nivel": [1, 1, 2, 1],
@@ -34,6 +36,8 @@ class TestAgregarNacionalPorSemana:
         resultado = agregar_nacional_por_semana(df_capitais)
         assert len(resultado) == 2  # 2 semanas
         assert resultado["casos"].iloc[0] == 180  # 100 + 80
+        assert resultado["casos_est_min"].iloc[0] == 190  # 105 + 85
+        assert resultado["casos_est_max"].iloc[0] == 220  # 120 + 100
 
     def test_agrega_colunas_numericas_como_texto(self, df_capitais):
         df = df_capitais.copy()
@@ -56,6 +60,11 @@ class TestAgregarPorUfSemana:
     def test_agrega_por_uf(self, df_capitais):
         resultado = agregar_por_uf_semana(df_capitais)
         assert len(resultado) == 4  # 2 UFs × 2 semanas
+        sp_202401 = resultado[
+            (resultado["sigla_uf"] == "SP") & (resultado["se"] == 202401)
+        ]
+        assert sp_202401["casos_est_min"].iloc[0] == 105
+        assert sp_202401["casos_est_max"].iloc[0] == 120
 
     def test_agrega_texto_numerico(self, df_capitais):
         df = df_capitais.copy()

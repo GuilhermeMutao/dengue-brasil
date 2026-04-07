@@ -29,6 +29,8 @@ _COLUNAS_NUMERICAS_AGREGACAO = [
     "se",
     "casos",
     "casos_est",
+    "casos_est_min",
+    "casos_est_max",
     "inc",
     "rt",
     "p_rt1",
@@ -359,6 +361,10 @@ def agregar_nacional_por_semana(df: pd.DataFrame) -> pd.DataFrame:
         "casos": "sum",
         "casos_est": "sum",
     }
+    if "casos_est_min" in df.columns:
+        agg_dict["casos_est_min"] = "sum"
+    if "casos_est_max" in df.columns:
+        agg_dict["casos_est_max"] = "sum"
     if "data" in df.columns:
         agg_dict["data"] = "first"
     if "inc" in df.columns:
@@ -392,6 +398,10 @@ def agregar_por_uf_semana(df: pd.DataFrame) -> pd.DataFrame:
     df = _normalizar_colunas_numericas(df)
 
     agg_dict: dict = {"casos": "sum", "casos_est": "sum"}
+    if "casos_est_min" in df.columns:
+        agg_dict["casos_est_min"] = "sum"
+    if "casos_est_max" in df.columns:
+        agg_dict["casos_est_max"] = "sum"
     if "data" in df.columns:
         agg_dict["data"] = "first"
     if "inc" in df.columns:

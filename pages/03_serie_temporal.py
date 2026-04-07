@@ -17,6 +17,7 @@ from src.data_processing import (
     adicionar_info_uf,
     extrair_ano_semana,
     calcular_variacao_semanal,
+    adicionar_metricas_estimativa,
 )
 from src.charts import (
     serie_temporal,
@@ -106,6 +107,7 @@ if modo == "Brasil (agregado)":
     df = limpar_dados(df_bruto)
     df = filtrar_por_periodo(df, ano_inicio, ano_fim)
     df_nacional = agregar_nacional_por_semana(df)
+    df_nacional = adicionar_metricas_estimativa(df_nacional)
 
     # Calcular variação semanal
     df_nacional = calcular_variacao_semanal(df_nacional, coluna=metrica)
@@ -178,6 +180,53 @@ if modo == "Brasil (agregado)":
         st.plotly_chart(fig, use_container_width=True)
 
     with tab2:
+        total_notificado = float(df_nacional["casos"].sum()) if "casos" in df_nacional.columns else 0.0
+        total_estimado = float(df_nacional["casos_est"].sum()) if "casos_est" in df_nacional.columns else 0.0
+        ajuste_total = total_estimado - total_notificado
+        ajuste_total_pct = (ajuste_total / total_notificado) * 100 if total_notificado > 0 else 0.0
+        ultimas_4 = df_nacional.tail(4)
+        ajuste_4 = float(ultimas_4["diferenca_est_notif"].sum()) if "diferenca_est_notif" in ultimas_4.columns else 0.0
+        notificados_4 = float(ultimas_4["casos"].sum()) if "casos" in ultimas_4.columns else 0.0
+        ajuste_4_pct = (ajuste_4 / notificados_4) * 100 if notificados_4 > 0 else 0.0
+
+        card1, card2, card3, card4 = st.columns(4)
+        with card1:
+            st.metric(
+                "Total Notificado",
+                f"{total_notificado:,.0f}",
+                help="Soma dos casos já notificados no período selecionado.",
+            )
+        with card2:
+            st.metric(
+                "Total Estimado",
+                f"{total_estimado:,.0f}",
+                help="Soma dos casos estimados pelo nowcasting do InfoDengue.",
+            )
+        with card3:
+            st.metric(
+                "Ajuste Total",
+                f"{ajuste_total:+,.0f}",
+                delta=f"{ajuste_total_pct:+.1f}%",
+                delta_color="inverse",
+                help="Diferença entre casos estimados e notificados no período.",
+            )
+        with card4:
+            st.metric(
+                "Ajuste 4 Semanas",
+                f"{ajuste_4:+,.0f}",
+                delta=f"{ajuste_4_pct:+.1f}%",
+                delta_color="inverse",
+                help="Diferença acumulada nas últimas 4 semanas da série filtrada.",
+            )
+
+        st.info(
+            "**Como interpretar:** os casos notificados são registros já recebidos; "
+            "os casos estimados usam nowcasting para compensar atrasos de notificação, "
+            "especialmente nas semanas mais recentes. A banda vermelha mostra a faixa "
+            "de incerteza da estimativa; quanto mais larga, maior a cautela ao tirar "
+            "conclusões sobre a tendência."
+        )
+
         fig_est = serie_temporal_com_estimativa(
             df_nacional,
             titulo=f"Casos Notificados vs. Estimados — Brasil ({ano_inicio}–{ano_fim})",

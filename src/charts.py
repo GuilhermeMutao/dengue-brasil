@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from src.constants import (
     CORES_NIVEL_ALERTA,
@@ -360,46 +361,96 @@ def serie_temporal_com_estimativa(
     df: pd.DataFrame,
     titulo: str = "Casos Notificados vs. Estimados",
 ) -> go.Figure:
-    """Gráfico de linha com casos reais e banda de estimativa.
-
-    Mostra casos notificados como linha sólida e casos estimados como
-    linha tracejada, com banda de confiança se disponível.
-    """
+    """Gráfico analítico com casos notificados, estimados e ajuste."""
     if df.empty:
         fig = go.Figure()
         fig.add_annotation(text="Sem dados disponíveis", showarrow=False, font=dict(size=20))
         return _aplicar_layout(fig, titulo)
 
     coluna_x = "data" if "data" in df.columns else "se"
-    df_sorted = df.sort_values(coluna_x)
+    df_sorted = df.sort_values(coluna_x).copy()
 
-    fig = go.Figure()
+    for col in [
+        "casos",
+        "casos_est",
+        "casos_est_min",
+        "casos_est_max",
+        "diferenca_est_notif",
+        "pct_ajuste_estimativa",
+    ]:
+        if col in df_sorted.columns:
+            df_sorted[col] = pd.to_numeric(df_sorted[col], errors="coerce")
 
-    # Área de confiança (se disponível)
+    if (
+        "diferenca_est_notif" not in df_sorted.columns
+        and "casos" in df_sorted.columns
+        and "casos_est" in df_sorted.columns
+    ):
+        df_sorted["diferenca_est_notif"] = df_sorted["casos_est"] - df_sorted["casos"]
+
+    if (
+        "pct_ajuste_estimativa" not in df_sorted.columns
+        and "diferenca_est_notif" in df_sorted.columns
+        and "casos" in df_sorted.columns
+    ):
+        df_sorted["pct_ajuste_estimativa"] = 0.0
+        casos_validos = df_sorted["casos"] > 0
+        df_sorted.loc[casos_validos, "pct_ajuste_estimativa"] = (
+            df_sorted.loc[casos_validos, "diferenca_est_notif"]
+            / df_sorted.loc[casos_validos, "casos"]
+        ) * 100
+
+    hover_df = pd.DataFrame(index=df_sorted.index)
+    hover_df["se"] = df_sorted["se"] if "se" in df_sorted.columns else df_sorted[coluna_x]
+    hover_df["notificados"] = df_sorted["casos"] if "casos" in df_sorted.columns else np.nan
+    hover_df["estimados"] = df_sorted["casos_est"] if "casos_est" in df_sorted.columns else np.nan
+    hover_df["ajuste"] = df_sorted["diferenca_est_notif"] if "diferenca_est_notif" in df_sorted.columns else np.nan
+    hover_df["ajuste_pct"] = df_sorted["pct_ajuste_estimativa"] if "pct_ajuste_estimativa" in df_sorted.columns else np.nan
+    hover_df["limite_min"] = df_sorted["casos_est_min"] if "casos_est_min" in df_sorted.columns else np.nan
+    hover_df["limite_max"] = df_sorted["casos_est_max"] if "casos_est_max" in df_sorted.columns else np.nan
+    customdata = hover_df.to_numpy()
+
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        row_heights=[0.72, 0.28],
+        vertical_spacing=0.08,
+        subplot_titles=(
+            "Casos por semana epidemiológica",
+            "Ajuste da estimativa (estimados - notificados)",
+        ),
+    )
+
+    # Área de incerteza (se disponível)
     if "casos_est_min" in df_sorted.columns and "casos_est_max" in df_sorted.columns:
         fig.add_trace(
             go.Scatter(
-                x=pd.concat([df_sorted[coluna_x], df_sorted[coluna_x][::-1]]),
-                y=pd.concat([df_sorted["casos_est_max"], df_sorted["casos_est_min"][::-1]]),
-                fill="toself",
-                fillcolor="rgba(230, 57, 70, 0.15)",
-                line=dict(color="rgba(255,255,255,0)"),
+                x=df_sorted[coluna_x],
+                y=df_sorted["casos_est_max"],
+                mode="lines",
+                line=dict(color="rgba(230,57,70,0)", width=0),
                 hoverinfo="skip",
-                showlegend=True,
-                name="Intervalo de Confiança",
-            )
+                showlegend=False,
+                name="Limite Superior",
+            ),
+            row=1,
+            col=1,
         )
-
-    # Casos estimados
-    if "casos_est" in df_sorted.columns:
         fig.add_trace(
             go.Scatter(
                 x=df_sorted[coluna_x],
-                y=df_sorted["casos_est"],
+                y=df_sorted["casos_est_min"],
                 mode="lines",
-                name="Casos Estimados",
-                line=dict(color=COR_PRIMARIA, width=2, dash="dash"),
-            )
+                fill="tonexty",
+                fillcolor="rgba(230, 57, 70, 0.15)",
+                line=dict(color="rgba(230,57,70,0)", width=0),
+                hoverinfo="skip",
+                showlegend=True,
+                name="Intervalo de Incerteza",
+            ),
+            row=1,
+            col=1,
         )
 
     # Casos notificados
@@ -411,15 +462,97 @@ def serie_temporal_com_estimativa(
                 mode="lines",
                 name="Casos Notificados",
                 line=dict(color=COR_SECUNDARIA, width=2.5),
-            )
+                customdata=customdata,
+                hovertemplate=(
+                    "SE: %{customdata[0]}<br>"
+                    "Notificados: %{y:,.0f}<br>"
+                    "Estimados: %{customdata[2]:,.0f}<br>"
+                    "Ajuste: %{customdata[3]:+,.0f} (%{customdata[4]:+.1f}%)"
+                    "<extra></extra>"
+                ),
+            ),
+            row=1,
+            col=1,
+        )
+
+    # Casos estimados por último para não ficar escondido sob a linha azul.
+    if "casos_est" in df_sorted.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=df_sorted[coluna_x],
+                y=df_sorted["casos_est"],
+                mode="lines",
+                name="Casos Estimados",
+                line=dict(color=COR_PRIMARIA, width=3, dash="dash"),
+                customdata=customdata,
+                hovertemplate=(
+                    "SE: %{customdata[0]}<br>"
+                    "Estimados: %{y:,.0f}<br>"
+                    "Notificados: %{customdata[1]:,.0f}<br>"
+                    "Ajuste: %{customdata[3]:+,.0f} (%{customdata[4]:+.1f}%)<br>"
+                    "Intervalo: %{customdata[5]:,.0f} - %{customdata[6]:,.0f}"
+                    "<extra></extra>"
+                ),
+            ),
+            row=1,
+            col=1,
+        )
+
+    if "diferenca_est_notif" in df_sorted.columns:
+        cores_barra = np.where(
+            df_sorted["diferenca_est_notif"] >= 0,
+            "rgba(230, 57, 70, 0.75)",
+            "rgba(69, 123, 157, 0.75)",
+        )
+        fig.add_trace(
+            go.Bar(
+                x=df_sorted[coluna_x],
+                y=df_sorted["diferenca_est_notif"],
+                name="Diferença Estimada - Notificada",
+                marker_color=cores_barra,
+                customdata=customdata,
+                hovertemplate=(
+                    "SE: %{customdata[0]}<br>"
+                    "Diferença: %{y:+,.0f}<br>"
+                    "Ajuste: %{customdata[4]:+.1f}%"
+                    "<extra></extra>"
+                ),
+            ),
+            row=2,
+            col=1,
         )
 
     fig.update_xaxes(
         showgrid=True,
         gridcolor="rgba(0,0,0,0.05)",
         tickformat="%d/%m/%Y" if coluna_x == "data" else None,
+        row=1,
+        col=1,
     )
-    fig.update_yaxes(showgrid=True, gridcolor="rgba(0,0,0,0.05)")
+    fig.update_xaxes(
+        showgrid=True,
+        gridcolor="rgba(0,0,0,0.05)",
+        tickformat="%d/%m/%Y" if coluna_x == "data" else None,
+        row=2,
+        col=1,
+    )
+    fig.update_yaxes(
+        title_text="Casos",
+        showgrid=True,
+        gridcolor="rgba(0,0,0,0.05)",
+        row=1,
+        col=1,
+    )
+    fig.update_yaxes(
+        title_text="Ajuste",
+        showgrid=True,
+        zeroline=True,
+        zerolinecolor="rgba(0,0,0,0.35)",
+        gridcolor="rgba(0,0,0,0.05)",
+        row=2,
+        col=1,
+    )
+    fig.update_layout(hovermode="x unified", height=650)
 
     return _aplicar_layout(fig, titulo)
 

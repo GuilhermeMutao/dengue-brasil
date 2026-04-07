@@ -42,6 +42,8 @@ def df_serie():
         "data": pd.to_datetime(["2024-01-07", "2024-01-14", "2024-01-21", "2024-01-28"]),
         "casos": [100, 150, 200, 180],
         "casos_est": [110, 160, 210, 190],
+        "casos_est_min": [105, 155, 205, 185],
+        "casos_est_max": [120, 170, 220, 200],
     })
 
 
@@ -100,6 +102,15 @@ class TestSerieTemporalEstimativa:
     def test_retorna_figure(self, df_serie):
         fig = serie_temporal_com_estimativa(df_serie)
         assert isinstance(fig, go.Figure)
+
+    def test_contem_camadas_analiticas(self, df_serie):
+        fig = serie_temporal_com_estimativa(df_serie)
+        nomes = [trace.name for trace in fig.data]
+
+        assert "Casos Estimados" in nomes
+        assert "Casos Notificados" in nomes
+        assert "Intervalo de Incerteza" in nomes
+        assert "Diferença Estimada - Notificada" in nomes
 
 
 class TestBarrasComparativo:

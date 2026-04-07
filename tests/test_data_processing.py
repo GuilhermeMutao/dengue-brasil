@@ -13,6 +13,7 @@ from src.data_processing import (
     adicionar_info_uf,
     extrair_ano_semana,
     calcular_variacao_semanal,
+    adicionar_metricas_estimativa,
     calcular_kpis,
     preparar_dados_mapa_estados,
     preparar_dados_mapa_municipios,
@@ -190,6 +191,52 @@ class TestCalcularKpis:
     def test_df_vazio(self):
         kpis = calcular_kpis(pd.DataFrame())
         assert kpis["total_casos"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Testes: adicionar_metricas_estimativa
+# ---------------------------------------------------------------------------
+
+class TestAdicionarMetricasEstimativa:
+    def test_calcula_diferenca_positiva_e_incerteza(self):
+        df = pd.DataFrame({
+            "casos": [100],
+            "casos_est": [120],
+            "casos_est_min": [110],
+            "casos_est_max": [130],
+        })
+
+        resultado = adicionar_metricas_estimativa(df)
+
+        assert resultado["diferenca_est_notif"].iloc[0] == 20
+        assert resultado["pct_ajuste_estimativa"].iloc[0] == pytest.approx(20.0)
+        assert resultado["faixa_incerteza"].iloc[0] == 20
+        assert resultado["incerteza_pct"].iloc[0] == pytest.approx(16.6667, rel=1e-3)
+
+    def test_calcula_diferenca_zero_sem_limites(self):
+        df = pd.DataFrame({"casos": [100], "casos_est": [100]})
+
+        resultado = adicionar_metricas_estimativa(df)
+
+        assert resultado["diferenca_est_notif"].iloc[0] == 0
+        assert resultado["pct_ajuste_estimativa"].iloc[0] == pytest.approx(0.0)
+        assert pd.isna(resultado["faixa_incerteza"].iloc[0])
+        assert pd.isna(resultado["incerteza_pct"].iloc[0])
+
+    def test_protege_divisao_por_zero(self):
+        df = pd.DataFrame({
+            "casos": [0],
+            "casos_est": [10],
+            "casos_est_min": [8],
+            "casos_est_max": [12],
+        })
+
+        resultado = adicionar_metricas_estimativa(df)
+
+        assert resultado["diferenca_est_notif"].iloc[0] == 10
+        assert resultado["pct_ajuste_estimativa"].iloc[0] == 0.0
+        assert resultado["faixa_incerteza"].iloc[0] == 4
+        assert resultado["incerteza_pct"].iloc[0] == pytest.approx(40.0)
 
 
 # ---------------------------------------------------------------------------

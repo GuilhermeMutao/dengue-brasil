@@ -63,6 +63,8 @@ def limpar_dados(df: pd.DataFrame) -> pd.DataFrame:
     for col in [
         "casos",
         "casos_est",
+        "casos_est_min",
+        "casos_est_max",
         "inc",
         "rt",
         "p_rt1",
@@ -222,6 +224,53 @@ def adicionar_metricas_populacionais(df: pd.DataFrame) -> pd.DataFrame:
             0.0,
         )
         df["taxa_est_notif"] = df["taxa_est_notif"].round(2)
+
+    return df
+
+
+def adicionar_metricas_estimativa(df: pd.DataFrame) -> pd.DataFrame:
+    """Adiciona métricas para comparar casos estimados e notificados.
+
+    Colunas adicionadas quando possível:
+        - diferenca_est_notif: casos estimados menos casos notificados
+        - pct_ajuste_estimativa: diferença percentual sobre os notificados
+        - faixa_incerteza: largura entre limites superior e inferior
+        - incerteza_pct: largura da faixa como % dos casos estimados
+    """
+    if df.empty:
+        return df
+
+    df = df.copy()
+    for col in ["casos", "casos_est", "casos_est_min", "casos_est_max"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    if "casos" in df.columns and "casos_est" in df.columns:
+        df["diferenca_est_notif"] = df["casos_est"] - df["casos"]
+        df["pct_ajuste_estimativa"] = 0.0
+        casos_validos = df["casos"] > 0
+        df.loc[casos_validos, "pct_ajuste_estimativa"] = (
+            df.loc[casos_validos, "diferenca_est_notif"]
+            / df.loc[casos_validos, "casos"]
+        ) * 100
+    else:
+        df["diferenca_est_notif"] = np.nan
+        df["pct_ajuste_estimativa"] = np.nan
+
+    if "casos_est_min" in df.columns and "casos_est_max" in df.columns:
+        df["faixa_incerteza"] = df["casos_est_max"] - df["casos_est_min"]
+        if "casos_est" in df.columns:
+            df["incerteza_pct"] = 0.0
+            estimativas_validas = df["casos_est"] > 0
+            df.loc[estimativas_validas, "incerteza_pct"] = (
+                df.loc[estimativas_validas, "faixa_incerteza"]
+                / df.loc[estimativas_validas, "casos_est"]
+            ) * 100
+        else:
+            df["incerteza_pct"] = np.nan
+    else:
+        df["faixa_incerteza"] = np.nan
+        df["incerteza_pct"] = np.nan
 
     return df
 

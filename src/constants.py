@@ -129,6 +129,10 @@ METRICAS: dict[str, str] = {
     "rt": "Número Reprodutivo (Rt)",
     "nivel": "Nível de Alerta",
     "taxa_est_notif": "Razão Estimado / Notificado",
+    "diferenca_est_notif": "Diferença Estimado - Notificado",
+    "pct_ajuste_estimativa": "% de Ajuste da Estimativa",
+    "faixa_incerteza": "Faixa de Incerteza",
+    "incerteza_pct": "% de Incerteza",
     "populacao": "População Estimada",
 }
 
