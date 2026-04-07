@@ -27,9 +27,13 @@ from src.charts import (
 from src.constants import (
     ANO_MINIMO,
     ANO_MAXIMO,
+    ESCALAS_HEATMAP_SAZONAL,
     METRICAS,
     METRICAS_MAPA,
     LISTA_REGIOES,
+    mensagem_sem_dados_doenca,
+    obter_nome_doenca,
+    obter_prefixo_doenca,
 )
 
 # ---------------------------------------------------------------------------
@@ -79,14 +83,17 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 # Título
 # ---------------------------------------------------------------------------
+_doenca = st.session_state.get("doenca", "dengue")
+_nome_doenca = obter_nome_doenca(_doenca)
+_prefixo_doenca = obter_prefixo_doenca(_doenca)
+
 st.title("📊 Comparativo Regional")
 st.markdown(
-    "Compare estados e regiões do Brasil em relação aos indicadores de dengue. "
-    "Os dados são baseados nas capitais estaduais como proxy."
+    f"Compare estados e regiões do Brasil em relação aos indicadores de **{_nome_doenca}**. "
+    "A visão nacional agrega os **principais municípios por UF**, o que melhora a "
+    "representatividade sem consultar todos os municípios do país."
 )
 st.divider()
-
-_doenca = st.session_state.get("doenca", "dengue")
 
 # ---------------------------------------------------------------------------
 # Carregar dados
@@ -95,7 +102,7 @@ with st.spinner("Carregando dados para comparação…"):
     df_bruto = buscar_dados_brasil_top_municipios(ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
 
 if df_bruto.empty:
-    st.error("⚠️ Não foi possível obter dados. Tente novamente.")
+    st.error(mensagem_sem_dados_doenca(_doenca))
     st.stop()
 
 df = limpar_dados(df_bruto)
@@ -168,7 +175,7 @@ with tab1:
         st.download_button(
             "⬇️ Baixar ranking (CSV)",
             data=csv_comp,
-            file_name=f"comparativo_ranking_{ano_inicio}_{ano_fim}.csv",
+            file_name=f"{_prefixo_doenca}_comparativo_ranking_{ano_inicio}_{ano_fim}.csv",
             mime="text/csv",
             key="dl_comp_rank",
         )
@@ -270,17 +277,36 @@ with tab5:
     df_nacional = extrair_ano_semana(df_nacional)
 
     metrica_sazonal = metrica if metrica in df_nacional.columns else "casos"
+    default_heat = "relativa_ano" if metrica_sazonal in {"casos", "casos_est", "inc"} else "absoluta"
+    escala_heat = st.radio(
+        "Escala de cores",
+        options=list(ESCALAS_HEATMAP_SAZONAL.keys()),
+        index=list(ESCALAS_HEATMAP_SAZONAL.keys()).index(default_heat),
+        format_func=lambda e: ESCALAS_HEATMAP_SAZONAL[e],
+        horizontal=True,
+        key="comp_heatmap_sazonal_escala",
+        help=(
+            "Use a escala relativa para enxergar o padrão sazonal entre anos; "
+            "use a absoluta para comparar volume real."
+        ),
+    )
+    st.caption(
+        "Dica: a escala relativa ao pico do ano reduz a dominância visual de anos "
+        "epidêmicos, como 2024."
+    )
 
     fig_sazonal = heatmap_temporal(
         df_nacional,
         coluna_valor=metrica_sazonal,
         titulo="",
+        escala=escala_heat,
     )
     st.plotly_chart(fig_sazonal, use_container_width=True)
 
     st.info(
-        "💡 **Como interpretar**: Linhas mais escuras indicam maior incidência. "
-        "Observe as colunas (semanas) com picos recorrentes — essas representam "
-        "o período sazonal da dengue (geralmente entre as semanas 1–20, "
-        "correspondentes ao verão e outono)."
+        "💡 **Como interpretar**: na escala relativa, cada ano é comparado com o "
+        "seu próprio pico, facilitando enxergar em quais semanas a sazonalidade "
+        "aparece. Na escala absoluta, as cores comparam o volume real entre anos. "
+        "Em arboviroses transmitidas pelo Aedes, picos costumam se concentrar no "
+        "verão e no outono, mas o padrão pode variar por doença, localidade e ano."
     )

@@ -1,5 +1,5 @@
 """
-Módulo de criação de gráficos Plotly para o Dashboard Dengue Brasil.
+Módulo de criação de gráficos Plotly para o Dashboard Arboviroses Brasil.
 
 Cada função retorna um objeto plotly.graph_objects.Figure pronto
 para ser exibido via st.plotly_chart().
@@ -61,7 +61,7 @@ def mapa_coropletico_estados(
     geojson: dict,
     feature_id_key: str = "properties.codarea",
     metrica: str = "casos",
-    titulo: str = "Casos de Dengue por Estado",
+    titulo: str = "Casos por Estado",
     log_scale: bool = False,
 ) -> folium.Map:
     """Cria mapa coroplético dos estados brasileiros com Folium.
@@ -205,7 +205,7 @@ def mapa_coropletico_municipios(
     geojson: dict,
     feature_id_key: str = "properties.codarea",
     metrica: str = "casos",
-    titulo: str = "Casos de Dengue por Município",
+    titulo: str = "Casos por Município",
     center: Optional[dict] = None,
     zoom: int = 6,
     log_scale: bool = False,
@@ -307,7 +307,7 @@ def serie_temporal(
     df: pd.DataFrame,
     coluna_y: str = "casos",
     coluna_grupo: Optional[str] = None,
-    titulo: str = "Evolução Temporal dos Casos de Dengue",
+    titulo: str = "Evolução Temporal dos Casos",
 ) -> go.Figure:
     """Cria gráfico de linha com evolução temporal.
 
@@ -622,7 +622,7 @@ def barras_comparativo(
 def barras_agrupadas_regiao(
     df: pd.DataFrame,
     coluna_y: str = "casos",
-    titulo: str = "Casos de Dengue por Região",
+    titulo: str = "Casos por Região",
 ) -> go.Figure:
     """Barras agrupadas por macrorregião."""
     if df.empty or "regiao" not in df.columns:
@@ -670,14 +670,26 @@ def heatmap_temporal(
     df: pd.DataFrame,
     coluna_valor: str = "casos",
     titulo: str = "Mapa de Calor — Casos por Semana e Ano",
+    escala: str = "absoluta",
+    percentil_clip: float = 95.0,
 ) -> go.Figure:
     """Heatmap com eixo X = semana epidemiológica e eixo Y = ano.
 
     Requer colunas 'ano' e 'semana' (usar extrair_ano_semana antes).
+    A escala pode realçar padrões sazonais quando anos epidêmicos dominam a cor.
     """
     if df.empty or "ano" not in df.columns or "semana" not in df.columns:
         fig = go.Figure()
         fig.add_annotation(text="Sem dados disponíveis", showarrow=False, font=dict(size=20))
+        return _aplicar_layout(fig, titulo)
+
+    if coluna_valor not in df.columns:
+        fig = go.Figure()
+        fig.add_annotation(
+            text=f"Coluna '{coluna_valor}' não disponível",
+            showarrow=False,
+            font=dict(size=20),
+        )
         return _aplicar_layout(fig, titulo)
 
     label_valor = METRICAS.get(coluna_valor, coluna_valor.title())
@@ -689,17 +701,71 @@ def heatmap_temporal(
         aggfunc="sum",
         fill_value=0,
     )
+    pivot = pivot.sort_index().sort_index(axis=1).astype(float)
 
-    fig = px.imshow(
-        pivot,
-        labels=dict(x="Semana Epidemiológica", y="Ano", color=label_valor),
-        color_continuous_scale=ESCALA_CALOR,
-        aspect="auto",
+    valores = pivot.to_numpy(dtype=float)
+    valores_validos = valores[np.isfinite(valores)]
+    valores_positivos = valores_validos[valores_validos > 0]
+    referencia_percentil = valores_positivos if valores_positivos.size else valores_validos
+
+    escala = escala if escala in {"absoluta", "percentil_95", "log", "relativa_ano"} else "absoluta"
+    pivot_visual = pivot.copy()
+    label_cor = label_valor
+    label_visual = label_valor
+    hover_extra = ""
+    zmin = None
+    zmax = None
+
+    if escala == "percentil_95" and referencia_percentil.size:
+        limite = float(np.nanpercentile(referencia_percentil, percentil_clip))
+        pivot_visual = pivot.clip(upper=limite)
+        label_cor = f"{label_valor} (cor limitada no P{percentil_clip:g})"
+        label_visual = "Valor usado na cor"
+        hover_extra = f"<br>Limite da escala: {limite:,.0f}"
+    elif escala == "log":
+        pivot_visual = np.log10(pivot + 1)
+        label_cor = f"{label_valor} (log10)"
+        label_visual = "log10(valor + 1)"
+        hover_extra = "<br>Escala logarítmica para reduzir efeito de picos extremos"
+    elif escala == "relativa_ano":
+        max_por_ano = pivot.max(axis=1).replace(0, np.nan)
+        pivot_visual = pivot.div(max_por_ano, axis=0).fillna(0) * 100
+        label_cor = "% do Pico do Ano"
+        label_visual = "% do pico anual"
+        hover_extra = "<br>Escala relativa ao maior valor do próprio ano"
+        zmin = 0
+        zmax = 100
+
+    fmt_original = ",.0f" if coluna_valor in {"casos", "casos_est", "casos_est_min", "casos_est_max"} else ",.2f"
+    fmt_visual = ".1f" if escala == "relativa_ano" else ".2f"
+    if escala in {"absoluta", "percentil_95"} and coluna_valor in {"casos", "casos_est", "casos_est_min", "casos_est_max"}:
+        fmt_visual = ",.0f"
+
+    hovertemplate = (
+        "Ano: %{y}<br>"
+        "Semana Epidemiológica: %{x}<br>"
+        f"{label_valor}: %{{customdata[0]:{fmt_original}}}"
+    )
+    if escala != "absoluta":
+        hovertemplate += f"<br>{label_visual}: %{{z:{fmt_visual}}}{hover_extra}"
+    hovertemplate += "<extra></extra>"
+
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=pivot_visual.to_numpy(dtype=float),
+            x=pivot_visual.columns.tolist(),
+            y=pivot_visual.index.tolist(),
+            customdata=np.dstack([pivot.to_numpy(dtype=float)]),
+            colorscale=ESCALA_CALOR,
+            zmin=zmin,
+            zmax=zmax,
+            colorbar=dict(title=dict(text=label_cor, font=dict(size=12))),
+            hovertemplate=hovertemplate,
+        )
     )
 
-    fig.update_layout(
-        coloraxis_colorbar=dict(title=dict(text=label_valor, font=dict(size=12))),
-    )
+    fig.update_xaxes(title_text="Semana Epidemiológica")
+    fig.update_yaxes(title_text="Ano", type="category")
 
     return _aplicar_layout(fig, titulo)
 

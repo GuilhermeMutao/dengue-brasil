@@ -1,5 +1,5 @@
 """
-Página: Análise Climática — Correlação entre dengue e variáveis ambientais.
+Página: Análise Climática — Correlação entre arboviroses e variáveis ambientais.
 """
 
 import streamlit as st
@@ -15,8 +15,16 @@ from src.data_processing import (
     filtrar_por_periodo,
     extrair_ano_semana,
 )
-from src.charts import grafico_clima_dual_axis, scatter_correlacao
-from src.constants import ANO_MINIMO, ANO_MAXIMO, METRICAS
+from src.charts import grafico_clima_dual_axis, heatmap_temporal, scatter_correlacao
+from src.constants import (
+    ANO_MINIMO,
+    ANO_MAXIMO,
+    ESCALAS_HEATMAP_SAZONAL,
+    METRICAS,
+    mensagem_sem_dados_doenca,
+    obter_nome_doenca,
+    obter_prefixo_doenca,
+)
 
 # ---------------------------------------------------------------------------
 # Sidebar — Filtros
@@ -52,15 +60,18 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 # Título
 # ---------------------------------------------------------------------------
+_doenca = st.session_state.get("doenca", "dengue")
+_nome_doenca = obter_nome_doenca(_doenca)
+_prefixo_doenca = obter_prefixo_doenca(_doenca)
+
 st.title("🌡️ Análise Climática")
 st.markdown(
     "Explore a relação entre variáveis ambientais (temperatura e umidade) e a "
-    "incidência de dengue. Os dados climáticos são fornecidos pela API InfoDengue, "
-    "provenientes de estações meteorológicas próximas às capitais."
+    f"incidência de **{_nome_doenca}**. Os dados climáticos são fornecidos pela API "
+    "InfoDengue para os municípios consultados e ajudam a contextualizar padrões "
+    "sazonais, sem implicar causalidade."
 )
 st.divider()
-
-_doenca = st.session_state.get("doenca", "dengue")
 
 # ---------------------------------------------------------------------------
 # Carregar dados
@@ -69,7 +80,7 @@ with st.spinner("Carregando dados nacionais…"):
     df_bruto = buscar_dados_brasil_top_municipios(ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
 
 if df_bruto.empty:
-    st.error("⚠️ Não foi possível obter dados. Tente novamente.")
+    st.error(mensagem_sem_dados_doenca(_doenca))
     st.stop()
 
 df = limpar_dados(df_bruto)
@@ -142,15 +153,16 @@ with tab1:
         df_nacional,
         coluna_casos="casos",
         coluna_temp=variavel_clima,
-        titulo=f"Casos de Dengue × {label_var} ({ano_inicio}–{ano_fim})",
+        titulo=f"Casos de {_nome_doenca} × {label_var} ({ano_inicio}–{ano_fim})",
     )
     st.plotly_chart(fig_dual, use_container_width=True)
 
     st.info(
         "💡 **Interpretação**: Observe se os picos de casos acompanham picos de "
         "temperatura ou umidade (correlação positiva) ou se ocorrem em momentos "
-        "opostos (correlação negativa). No Brasil, a dengue costuma ter picos no "
-        "verão (semanas 1–20), quando temperatura e umidade são mais elevadas."
+        "opostos (correlação negativa). Em arboviroses transmitidas pelo Aedes, "
+        "picos de casos costumam se concentrar em períodos quentes e úmidos, mas "
+        "a sazonalidade deve ser analisada por doença, localidade e ano."
     )
 
 # -- Tab 2: Scatter com tendência
@@ -184,7 +196,7 @@ with tab2:
     st.info(
         "💡 **Linha de tendência**: A reta (OLS) indica a direção geral da relação. "
         "Uma inclinação positiva sugere que valores mais altos da variável climática "
-        "estão associados a mais casos de dengue."
+        f"estão associados a mais casos de {_nome_doenca} no recorte analisado."
     )
 
 # -- Tab 3: Heatmap sazonalidade climática
@@ -192,6 +204,18 @@ with tab3:
     df_heat = extrair_ano_semana(df_nacional)
     if "ano" in df_heat.columns and "semana" in df_heat.columns and variavel_clima in df_heat.columns:
         import plotly.express as px
+        escala_heat_casos = st.radio(
+            "Escala de cores para o heatmap de casos",
+            options=list(ESCALAS_HEATMAP_SAZONAL.keys()),
+            index=list(ESCALAS_HEATMAP_SAZONAL.keys()).index("relativa_ano"),
+            format_func=lambda e: ESCALAS_HEATMAP_SAZONAL[e],
+            horizontal=True,
+            key="clima_heatmap_casos_escala",
+            help=(
+                "Use a escala relativa para comparar sazonalidade dos casos entre anos; "
+                "use a absoluta para comparar volume real."
+            ),
+        )
         pivot_clima = df_heat.pivot_table(
             values=variavel_clima, index="ano", columns="semana", aggfunc="mean",
         )
@@ -208,25 +232,19 @@ with tab3:
         st.plotly_chart(fig_heat_clima, use_container_width=True)
 
         # Heatmap de casos para comparação lado-a-lado
-        pivot_casos = df_heat.pivot_table(
-            values="casos", index="ano", columns="semana", aggfunc="sum", fill_value=0,
-        )
-        fig_heat_casos = px.imshow(
-            pivot_casos,
-            labels=dict(x="Semana Epidemiológica", y="Ano", color="Casos"),
-            color_continuous_scale="YlOrRd",
-            aspect="auto",
-        )
-        fig_heat_casos.update_layout(
-            title=dict(text="Sazonalidade — Casos por Semana e Ano", font=dict(size=18)),
-            height=400,
+        fig_heat_casos = heatmap_temporal(
+            df_heat,
+            coluna_valor="casos",
+            titulo=f"Sazonalidade — Casos de {_nome_doenca} por Semana e Ano",
+            escala=escala_heat_casos,
         )
         st.plotly_chart(fig_heat_casos, use_container_width=True)
 
         st.info(
             "💡 **Compare os dois mapas de calor**: Observe se as regiões mais "
             "quentes/úmidas (tonalidades intensas no mapa superior) coincidem "
-            "com os maiores volumes de casos (tonalidades intensas no mapa inferior)."
+            "com os maiores volumes de casos (tonalidades intensas no mapa inferior). "
+            "Se 2024 dominar a escala, use a leitura relativa ou logarítmica."
         )
     else:
         st.warning("Dados insuficientes para o heatmap sazonal.")
@@ -257,7 +275,7 @@ with tab4:
     st.download_button(
         "⬇️ Baixar dados climáticos (CSV)",
         data=csv,
-        file_name=f"dengue_clima_{ano_inicio}_{ano_fim}.csv",
+        file_name=f"{_prefixo_doenca}_clima_{ano_inicio}_{ano_fim}.csv",
         mime="text/csv",
         key="download_clima",
     )

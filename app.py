@@ -7,19 +7,29 @@ Trabalho de Conclusão de Curso da Especialização em Ciência de Dados
 do IFTM — Campus Uberaba Parque Tecnológico.
 
 Autor: Guilherme José Morais Mutão
-Orientador: Prof. Dr. Ernani Viriato De Melo
+Orientador: Prof.
+Camilo de Lelis Tosta Paula
 Ano: 2025
 """
 
 import streamlit as st
 
+from src.constants import (
+    APP_ICON,
+    APP_LAYOUT,
+    APP_TITLE,
+    LABELS_DOENCA,
+    obter_icone_doenca,
+    obter_nome_doenca,
+)
+
 # ---------------------------------------------------------------------------
 # Configuração da página (deve ser a PRIMEIRA chamada Streamlit)
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Dashboard Arboviroses Brasil",
-    page_icon="🦟",
-    layout="wide",
+    page_title=APP_TITLE,
+    page_icon=APP_ICON,
+    layout=APP_LAYOUT,
     initial_sidebar_state="expanded",
 )
 
@@ -72,22 +82,19 @@ pg = st.navigation(
 # ---------------------------------------------------------------------------
 # Sidebar global
 # ---------------------------------------------------------------------------
-DOENCAS = {"dengue": "🦟 Dengue", "chikungunya": "🤒 Chikungunya", "zika": "🧬 Zika"}
-
 with st.sidebar:
     doenca_sel = st.selectbox(
         "Doença",
-        options=list(DOENCAS.keys()),
-        format_func=lambda d: DOENCAS[d],
+        options=list(LABELS_DOENCA.keys()),
+        format_func=lambda d: LABELS_DOENCA[d],
         index=0,
         key="doenca_global",
         help="Selecione a arbovirose para análise. Todas as páginas usarão esta seleção.",
     )
     st.session_state["doenca"] = doenca_sel
 
-    titulo_doenca = DOENCAS.get(doenca_sel, "Dengue").split(" ", 1)
-    icone = titulo_doenca[0]
-    nome = titulo_doenca[1] if len(titulo_doenca) > 1 else "Dengue"
+    icone = obter_icone_doenca(doenca_sel)
+    nome = obter_nome_doenca(doenca_sel)
     st.markdown(f"### {icone} Dashboard {nome} Brasil")
     st.caption(
         f"Análise e monitoramento de dados de saúde pública · "

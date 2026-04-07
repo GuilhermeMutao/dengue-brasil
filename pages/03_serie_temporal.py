@@ -26,7 +26,17 @@ from src.charts import (
     heatmap_temporal,
     heatmap_estados,
 )
-from src.constants import ANO_MINIMO, ANO_MAXIMO, ESTADOS, LISTA_UFS, METRICAS
+from src.constants import (
+    ANO_MINIMO,
+    ANO_MAXIMO,
+    ESTADOS,
+    ESCALAS_HEATMAP_SAZONAL,
+    LISTA_UFS,
+    METRICAS,
+    mensagem_sem_dados_doenca,
+    obter_nome_doenca,
+    obter_prefixo_doenca,
+)
 
 # ---------------------------------------------------------------------------
 # Sidebar — Filtros
@@ -84,24 +94,30 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 # Título
 # ---------------------------------------------------------------------------
+_doenca = st.session_state.get("doenca", "dengue")
+_nome_doenca = obter_nome_doenca(_doenca)
+_prefixo_doenca = obter_prefixo_doenca(_doenca)
+
 st.title("📈 Série Temporal")
 st.markdown(
-    "Acompanhe a evolução dos casos de dengue ao longo das semanas "
+    f"Acompanhe a evolução dos casos de **{_nome_doenca}** ao longo das semanas "
     "epidemiológicas. Compare estados ou analise a tendência nacional."
 )
 st.divider()
-
-_doenca = st.session_state.get("doenca", "dengue")
 
 # ---------------------------------------------------------------------------
 # Modo: Brasil agregado
 # ---------------------------------------------------------------------------
 if modo == "Brasil (agregado)":
     with st.spinner("Buscando dados nacionais…"):
-        df_bruto = buscar_dados_brasil_top_municipios(ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
+        df_bruto = buscar_dados_brasil_top_municipios(
+            ey_start=ano_inicio,
+            ey_end=ano_fim,
+            disease=_doenca,
+        )
 
     if df_bruto.empty:
-        st.error("⚠️ Não foi possível obter dados. Tente novamente.")
+        st.error(mensagem_sem_dados_doenca(_doenca))
         st.stop()
 
     df = limpar_dados(df_bruto)
@@ -229,7 +245,7 @@ if modo == "Brasil (agregado)":
 
         fig_est = serie_temporal_com_estimativa(
             df_nacional,
-            titulo=f"Casos Notificados vs. Estimados — Brasil ({ano_inicio}–{ano_fim})",
+            titulo=f"Casos Notificados vs. Estimados — {_nome_doenca} Brasil ({ano_inicio}–{ano_fim})",
         )
         st.plotly_chart(fig_est, use_container_width=True)
 
@@ -248,12 +264,37 @@ if modo == "Brasil (agregado)":
 
     with tab4:
         df_heat = extrair_ano_semana(df_nacional)
+        metrica_heat = "casos" if metrica not in df_heat.columns else metrica
+        default_heat = "relativa_ano" if metrica_heat in {"casos", "casos_est", "inc"} else "absoluta"
+        escala_heat = st.radio(
+            "Escala de cores",
+            options=list(ESCALAS_HEATMAP_SAZONAL.keys()),
+            index=list(ESCALAS_HEATMAP_SAZONAL.keys()).index(default_heat),
+            format_func=lambda e: ESCALAS_HEATMAP_SAZONAL[e],
+            horizontal=True,
+            key="serie_heatmap_escala",
+            help=(
+                "Use a escala relativa para comparar o formato sazonal entre anos. "
+                "Use a absoluta para comparar magnitude real."
+            ),
+        )
+        st.caption(
+            "Dica: a escala relativa ao pico do ano evita que a epidemia de 2024 "
+            "apague padrões menores em anos como 2023 e 2025."
+        )
         fig_heat = heatmap_temporal(
             df_heat,
-            coluna_valor="casos" if metrica not in df_heat.columns else metrica,
-            titulo=f"Sazonalidade — {METRICAS.get(metrica, metrica)} por Semana e Ano",
+            coluna_valor=metrica_heat,
+            titulo=f"Sazonalidade — {METRICAS.get(metrica_heat, metrica_heat)} por Semana e Ano",
+            escala=escala_heat,
         )
         st.plotly_chart(fig_heat, use_container_width=True)
+        st.info(
+            "💡 **Como interpretar**: na escala relativa, a cor mostra o quanto cada "
+            "semana representa do pico daquele mesmo ano. Ela é ideal para comparar "
+            "o formato sazonal entre anos. Na escala absoluta, a cor mostra o volume "
+            "real e anos epidêmicos podem dominar a visualização."
+        )
 
     # Dados brutos com download
     with st.expander("📋 Ver dados brutos"):
@@ -262,7 +303,7 @@ if modo == "Brasil (agregado)":
         st.download_button(
             "⬇️ Baixar série temporal (CSV)",
             data=csv,
-            file_name=f"dengue_serie_brasil_{ano_inicio}_{ano_fim}.csv",
+            file_name=f"{_prefixo_doenca}_serie_brasil_{ano_inicio}_{ano_fim}.csv",
             mime="text/csv",
             key="dl_serie_br",
         )
@@ -283,7 +324,7 @@ else:
                 frames.append(df_uf)
 
     if not frames:
-        st.error("Nenhum dado retornado para os estados selecionados.")
+        st.error(mensagem_sem_dados_doenca(_doenca))
         st.stop()
 
     df_todos = pd.concat(frames, ignore_index=True)
@@ -339,7 +380,7 @@ else:
         st.download_button(
             "⬇️ Baixar comparativo (CSV)",
             data=csv,
-            file_name=f"dengue_comparativo_{ano_inicio}_{ano_fim}.csv",
+            file_name=f"{_prefixo_doenca}_comparativo_{ano_inicio}_{ano_fim}.csv",
             mime="text/csv",
             key="dl_serie_comp",
         )

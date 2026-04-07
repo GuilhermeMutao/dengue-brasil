@@ -38,6 +38,10 @@ from src.constants import (
     METRICAS,
     METRICAS_MAPA,
     POPULACAO_BRASIL,
+    mensagem_sem_dados_doenca,
+    obter_icone_doenca,
+    obter_nome_doenca,
+    obter_prefixo_doenca,
 )
 
 # ---------------------------------------------------------------------------
@@ -96,10 +100,11 @@ with st.sidebar:
 # Título
 # ---------------------------------------------------------------------------
 _doenca = st.session_state.get("doenca", "dengue")
-_nomes_doenca = {"dengue": "Dengue", "chikungunya": "Chikungunya", "zika": "Zika"}
-_nome_doenca = _nomes_doenca.get(_doenca, "Dengue")
+_nome_doenca = obter_nome_doenca(_doenca)
+_icone_doenca = obter_icone_doenca(_doenca)
+_prefixo_doenca = obter_prefixo_doenca(_doenca)
 
-st.title(f"🦟 Visão Geral — {_nome_doenca} no Brasil")
+st.title(f"{_icone_doenca} Visão Geral — {_nome_doenca} no Brasil")
 st.markdown(
     f"Panorama nacional com base nos dados dos **principais municípios** "
     f"de cada estado. Fonte: [InfoDengue](https://info.dengue.mat.br)."
@@ -113,7 +118,7 @@ with st.spinner("Buscando dados dos principais municípios…"):
     df_bruto = buscar_dados_brasil_top_municipios(ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
 
 if df_bruto.empty:
-    st.error("⚠️ Não foi possível obter dados da API InfoDengue. Tente novamente mais tarde.")
+    st.error(mensagem_sem_dados_doenca(_doenca))
     st.stop()
 
 # Limpeza e enriquecimento
@@ -343,7 +348,7 @@ if not df_resumo_uf.empty:
         st.download_button(
             "⬇️ Baixar ranking absoluto (CSV)",
             data=csv_abs,
-            file_name=f"ranking_absoluto_{ano_inicio}_{ano_fim}.csv",
+            file_name=f"{_prefixo_doenca}_ranking_absoluto_{ano_inicio}_{ano_fim}.csv",
             mime="text/csv",
             key="dl_rank_abs",
         )
@@ -359,7 +364,7 @@ if not df_resumo_uf.empty:
             st.download_button(
                 "⬇️ Baixar ranking per capita (CSV)",
                 data=csv_pc,
-                file_name=f"ranking_percapita_{ano_inicio}_{ano_fim}.csv",
+                file_name=f"{_prefixo_doenca}_ranking_percapita_{ano_inicio}_{ano_fim}.csv",
                 mime="text/csv",
                 key="dl_rank_pc",
             )

@@ -1,8 +1,8 @@
 """
 Módulo de acesso à API do InfoDengue (Fiocruz / FGV).
 
-Fornece funções cacheadas para buscar dados epidemiológicos de dengue
-por município, por estado (agregado) e para todo o Brasil (via capitais).
+Fornece funções cacheadas para buscar dados epidemiológicos de arboviroses
+por município, por estado e para o recorte nacional usado no dashboard.
 """
 
 from __future__ import annotations
@@ -347,7 +347,7 @@ def buscar_dados_brasil_top_municipios(
 # =====================================================================
 
 def agregar_nacional_por_semana(df: pd.DataFrame) -> pd.DataFrame:
-    """Agrega dados de todas as capitais por semana epidemiológica.
+    """Agrega dados dos municípios consultados por semana epidemiológica.
 
     Soma casos/casos_est; média ponderada de incidência e Rt.
     Preserva dados climáticos (média) e p_rt1.

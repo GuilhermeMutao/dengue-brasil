@@ -37,6 +37,9 @@ from src.constants import (
     METRICAS,
     METRICAS_MAPA,
     LABELS_NIVEL_ALERTA,
+    mensagem_sem_dados_doenca,
+    obter_nome_doenca,
+    obter_prefixo_doenca,
 )
 
 # ---------------------------------------------------------------------------
@@ -104,12 +107,12 @@ with st.sidebar:
 # Título
 # ---------------------------------------------------------------------------
 _doenca = st.session_state.get("doenca", "dengue")
-_nomes_doenca = {"dengue": "Dengue", "chikungunya": "Chikungunya", "zika": "Zika"}
-_nome_doenca = _nomes_doenca.get(_doenca, "Dengue")
+_nome_doenca = obter_nome_doenca(_doenca)
+_prefixo_doenca = obter_prefixo_doenca(_doenca)
 
 st.title(f"🗺️ Mapa Interativo — {_nome_doenca}")
 st.markdown(
-    "Explore a distribuição geográfica da dengue. "
+    f"Explore a distribuição geográfica da arbovirose selecionada: **{_nome_doenca}**. "
     "Selecione **Brasil** para visão por estados ou um **estado específico** "
     "para ver os municípios."
 )
@@ -123,7 +126,7 @@ if nivel_geo == "Brasil (Estados)":
         df_bruto = buscar_dados_brasil_top_municipios(ey_start=ano_inicio, ey_end=ano_fim, disease=_doenca)
 
     if df_bruto.empty:
-        st.error("⚠️ Não foi possível obter dados. Tente novamente.")
+        st.error(mensagem_sem_dados_doenca(_doenca))
         st.stop()
 
     df = limpar_dados(df_bruto)
@@ -208,7 +211,7 @@ if nivel_geo == "Brasil (Estados)":
             st.download_button(
                 "⬇️ Baixar dados por estado (CSV)",
                 data=csv_estados,
-                file_name=f"dengue_estados_{ano_inicio}_{ano_fim}.csv",
+                file_name=f"{_prefixo_doenca}_estados_{ano_inicio}_{ano_fim}.csv",
                 mime="text/csv",
                 key="dl_mapa_estados",
             )
@@ -262,7 +265,7 @@ else:
         )
 
     if df_munic_dados.empty:
-        st.warning("Nenhum dado retornado para os municípios consultados.")
+        st.warning(mensagem_sem_dados_doenca(_doenca))
         st.stop()
 
     df_munic_dados = limpar_dados(df_munic_dados)
@@ -359,7 +362,7 @@ else:
             st.download_button(
                 "⬇️ Baixar dados dos municípios (CSV)",
                 data=csv_munic,
-                file_name=f"dengue_{uf_selecionada}_municipios_{ano_inicio}_{ano_fim}.csv",
+                file_name=f"{_prefixo_doenca}_{uf_selecionada}_municipios_{ano_inicio}_{ano_fim}.csv",
                 mime="text/csv",
                 key="dl_mapa_munic",
             )

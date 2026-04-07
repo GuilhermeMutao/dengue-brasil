@@ -1,5 +1,5 @@
 """
-Constantes globais do Dashboard Dengue Brasil.
+Constantes globais do Dashboard Arboviroses Brasil.
 
 Mapeamentos de UFs, regiões, geocodes de capitais, paleta de cores
 e configurações padrão da aplicação.
@@ -10,13 +10,59 @@ from datetime import datetime as _dt
 # ---------------------------------------------------------------------------
 # Configurações da aplicação
 # ---------------------------------------------------------------------------
-APP_TITLE = "Dashboard Dengue Brasil"
+APP_TITLE = "Dashboard Arboviroses Brasil"
 APP_ICON = "🦟"
 APP_LAYOUT = "wide"
 
 ANO_MINIMO = 2010
 ANO_MAXIMO = _dt.now().year
 DOENCA_PADRAO = "dengue"
+
+# ---------------------------------------------------------------------------
+# Doenças monitoradas
+# ---------------------------------------------------------------------------
+DOENCAS: dict[str, dict[str, str]] = {
+    "dengue": {"nome": "Dengue", "icone": "🦟", "prefixo": "dengue"},
+    "chikungunya": {"nome": "Chikungunya", "icone": "🤒", "prefixo": "chikungunya"},
+    "zika": {"nome": "Zika", "icone": "🧬", "prefixo": "zika"},
+}
+
+NOMES_DOENCA: dict[str, str] = {codigo: info["nome"] for codigo, info in DOENCAS.items()}
+ICONES_DOENCA: dict[str, str] = {codigo: info["icone"] for codigo, info in DOENCAS.items()}
+PREFIXOS_ARQUIVO_DOENCA: dict[str, str] = {
+    codigo: info["prefixo"] for codigo, info in DOENCAS.items()
+}
+LABELS_DOENCA: dict[str, str] = {
+    codigo: f"{info['icone']} {info['nome']}" for codigo, info in DOENCAS.items()
+}
+
+
+def obter_nome_doenca(doenca: str | None) -> str:
+    """Retorna o nome amigável da doença com fallback seguro."""
+    return NOMES_DOENCA.get(doenca or DOENCA_PADRAO, NOMES_DOENCA[DOENCA_PADRAO])
+
+
+def obter_icone_doenca(doenca: str | None) -> str:
+    """Retorna o ícone da doença com fallback seguro."""
+    return ICONES_DOENCA.get(doenca or DOENCA_PADRAO, ICONES_DOENCA[DOENCA_PADRAO])
+
+
+def obter_prefixo_doenca(doenca: str | None) -> str:
+    """Retorna o prefixo de arquivos exportados com fallback seguro."""
+    return PREFIXOS_ARQUIVO_DOENCA.get(
+        doenca or DOENCA_PADRAO,
+        PREFIXOS_ARQUIVO_DOENCA[DOENCA_PADRAO],
+    )
+
+
+def mensagem_sem_dados_doenca(doenca: str | None) -> str:
+    """Mensagem padronizada para cenários sem retorno da API InfoDengue."""
+    nome = obter_nome_doenca(doenca)
+    return (
+        f"⚠️ Não foi possível obter dados de {nome} para o período selecionado. "
+        "Algumas arboviroses podem ter disponibilidade limitada na API InfoDengue "
+        "para determinados municípios, estados ou anos."
+    )
 
 # ---------------------------------------------------------------------------
 # Informações dos 27 estados brasileiros (sigla, nome, código IBGE do estado
@@ -140,6 +186,14 @@ METRICAS: dict[str, str] = {
 METRICAS_MAPA: list[str] = [
     "casos", "casos_est", "inc", "casos_por_100k", "pct_nacional", "taxa_est_notif",
 ]
+
+# Leituras alternativas para heatmaps de sazonalidade.
+ESCALAS_HEATMAP_SAZONAL: dict[str, str] = {
+    "relativa_ano": "Relativa ao pico do ano",
+    "log": "Logarítmica",
+    "percentil_95": "Corte por percentil 95",
+    "absoluta": "Absoluta",
+}
 
 # ---------------------------------------------------------------------------
 # População estimada dos estados (IBGE 2024)

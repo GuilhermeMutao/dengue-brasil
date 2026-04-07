@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 import plotly.graph_objects as go
 import folium
+import numpy as np
 
 from src.charts import (
     mapa_coropletico_estados,
@@ -133,6 +134,32 @@ class TestHeatmapTemporal:
     def test_retorna_figure(self, df_heatmap):
         fig = heatmap_temporal(df_heatmap)
         assert isinstance(fig, go.Figure)
+
+    def test_escala_relativa_por_ano(self, df_heatmap):
+        fig = heatmap_temporal(df_heatmap, escala="relativa_ano")
+        z = np.asarray(fig.data[0].z, dtype=float)
+
+        assert z.max() == pytest.approx(100)
+        assert fig.data[0].colorbar.title.text == "% do Pico do Ano"
+
+    def test_escala_percentil_limita_outlier(self, df_heatmap):
+        df = pd.concat([
+            df_heatmap,
+            pd.DataFrame({"ano": [2024], "semana": [5], "casos": [10_000]}),
+        ], ignore_index=True)
+
+        fig = heatmap_temporal(df, escala="percentil_95", percentil_clip=80)
+        z = np.asarray(fig.data[0].z, dtype=float)
+
+        assert z.max() < 10_000
+        assert "P80" in fig.data[0].colorbar.title.text
+
+    def test_escala_logaritmica(self, df_heatmap):
+        fig = heatmap_temporal(df_heatmap, escala="log")
+        z = np.asarray(fig.data[0].z, dtype=float)
+
+        assert z.max() == pytest.approx(np.log10(df_heatmap["casos"].max() + 1))
+        assert "log10" in fig.data[0].colorbar.title.text
 
     def test_df_vazio(self):
         fig = heatmap_temporal(pd.DataFrame())

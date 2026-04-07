@@ -34,19 +34,33 @@ A abordagem da pesquisa é **quantitativa**, baseada na análise de **dados secu
 públicos. O projeto se caracteriza como pesquisa aplicada com desenvolvimento de um
 produto tecnológico.
 
-**Fonte de dados principal:**
+**Fontes de dados:**
 - **[InfoDengue](https://info.dengue.mat.br)** — Sistema de monitoramento de arboviroses
-  da Fiocruz e FGV. Fornece dados semanais por município com estimativas de casos,
-  nível de alerta, número reprodutivo (Rt), taxa de incidência e **variáveis climáticas**
-  (temperatura e umidade).
-
-**Fontes complementares:**
+  da Fiocruz e FGV. Fornece dados semanais por município para Dengue, Chikungunya e
+  Zika, incluindo casos notificados, casos estimados por nowcasting, intervalo de
+  incerteza, nível de alerta, número reprodutivo (Rt), incidência e variáveis climáticas.
 - **[API IBGE — Localidades](https://servicodados.ibge.gov.br/api/docs/localidades)** —
-  Lista de estados e municípios com geocódigos.
+  lista de estados e municípios com geocódigos usados nas consultas.
 - **[API IBGE — Malhas](https://servicodados.ibge.gov.br/api/docs/malhas)** —
   GeoJSON para mapas coropléticos.
-- **População Estimada (IBGE 2024)** — Estatísticas populacionais para cálculos
-  per capita.
+- **População Estimada (IBGE 2024)** — referência populacional para métricas per capita.
+
+**Recorte e agregação:**
+- A visão nacional usa os **principais municípios por UF** (até 5 municípios por estado)
+  como recorte de análise. Essa escolha melhora a cobertura em relação a usar apenas
+  capitais e mantém o tempo de carregamento viável para um dashboard interativo.
+- O recorte não representa todos os municípios do Brasil. Portanto, os totais devem ser
+  interpretados como um painel comparativo dos municípios consultados, não como o total
+  oficial nacional.
+- Nas páginas com drill-down municipal, o usuário pode consultar uma amostra maior de
+  municípios do estado, limitada por desempenho e disponibilidade da API.
+
+**Casos notificados vs. estimados:**
+- Casos notificados são os registros já recebidos.
+- Casos estimados usam nowcasting da InfoDengue para reduzir o impacto de atrasos de
+  notificação, principalmente nas semanas epidemiológicas mais recentes.
+- Quando disponíveis, `casos_est_min` e `casos_est_max` são exibidos como faixa de
+  incerteza, indicando a cautela necessária na leitura da tendência.
 
 **Pipeline de dados:**
 
@@ -112,8 +126,12 @@ app.py                    ← Entrypoint + navegação multipágina
 
 - A qualidade da análise depende diretamente da qualidade dos dados públicos,
   que podem apresentar **subnotificação** ou atrasos.
-- Para a visão nacional, os dados são baseados nas **27 capitais estaduais** como
-  proxy para cada estado (trade-off entre velocidade e abrangência).
+- A visão nacional usa os **principais municípios por UF**, não todos os municípios do
+  Brasil. Isso é um trade-off entre representatividade, tempo de resposta e uso responsável
+  da API.
+- Algumas combinações de doença, município e período podem retornar poucos dados ou
+  nenhum dado, especialmente para doenças com menor disponibilidade histórica em
+  determinados locais.
 - O projeto **não inclui modelo preditivo**, focando em análise descritiva e visual
   (escopo para trabalhos futuros).
 - A correlação climática apresentada é **exploratória** e não implica causalidade.
@@ -127,7 +145,7 @@ app.py                    ← Entrypoint + navegação multipágina
 Pós-graduação — Especialização em Ciência de Dados
 IFTM — Campus Uberaba Parque Tecnológico
 
-**Orientador:** Prof. Dr. Ernani Viriato De Melo
+**Orientador:** Prof. Camilo de Lelis Tosta Paula
 
 ---
 
